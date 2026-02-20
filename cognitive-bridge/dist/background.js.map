@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../src/background/index.ts"],
+  "sourcesContent": ["console.log('Background service worker loaded');\n"],
+  "mappings": "mBAAA,QAAQ,IAAI,kCAAkC",
+  "names": []
+}
