@@ -1,0 +1,21 @@
+{
+  "name": "cognitive-bridge",
+  "version": "0.1.0",
+  "description": "Chrome extension to reduce cognitive load during AI assistant responses",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.config.ts",
+    "dev": "node esbuild.config.ts --watch",
+    "type-check": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.246",
+    "@types/node": "^20.10.0",
+    "esbuild": "^0.19.11",
+    "typescript": "^5.3.3",
+    "vitest": "^1.1.0"
+  }
+}

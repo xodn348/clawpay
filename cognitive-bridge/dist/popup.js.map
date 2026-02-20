@@ -1,0 +1,7 @@
+{
+  "version": 3,
+  "sources": ["../src/popup/index.ts"],
+  "sourcesContent": ["console.log('Popup script loaded');\n"],
+  "mappings": "mBAAA,QAAQ,IAAI,qBAAqB",
+  "names": []
+}
