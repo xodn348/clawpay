@@ -21,40 +21,16 @@ Open-source payment MCP server for AI agents. Works with Claude Code, OpenClaw, 
 
 ## Quick Start
 
-### Claude Code
-
 ```bash
 npm install -g @xodn348/clawpay
 clawpay install
 ```
 
-`clawpay install` auto-detects Claude Code and runs:
-```bash
-claude mcp add -s user clawpay -e STRIPE_SECRET_KEY=sk_... -- clawpay
-```
+Auto-detects and configures **Claude Code, OpenClaw**, OpenCode, Claude Desktop, and Cursor.
 
-Then restart Claude Code and say: **"set up payment method"**
+> OpenClaw users: also run `npm install -g mcporter`
 
-### OpenClaw
-
-```bash
-npm install -g @xodn348/clawpay mcporter
-clawpay install
-```
-
-`clawpay install` auto-detects OpenClaw and installs the skill to `~/.openclaw/workspace/skills/clawpay/`.
-
-Or install via ClawdHub:
-```bash
-clawdhub install clawpay
-```
-
-Then set your credentials and say: **"set up payment method"**
-
----
-
-`clawpay install` detects all of the following automatically:
-**Claude Code, OpenClaw**, OpenCode, Claude Desktop, and Cursor.
+Once installed, ask your AI: **"set up payment method"**
 
 ---
 
