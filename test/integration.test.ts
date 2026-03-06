@@ -332,6 +332,29 @@ describe("MCP server smoke test", () => {
 });
 
 describe("PayPal config", () => {
+  let savedId: string | undefined;
+  let savedSecret: string | undefined;
+
+  before(() => {
+    savedId = process.env.PAYPAL_CLIENT_ID;
+    savedSecret = process.env.PAYPAL_CLIENT_SECRET;
+    delete process.env.PAYPAL_CLIENT_ID;
+    delete process.env.PAYPAL_CLIENT_SECRET;
+  });
+
+  after(() => {
+    if (savedId !== undefined) {
+      process.env.PAYPAL_CLIENT_ID = savedId;
+    } else {
+      delete process.env.PAYPAL_CLIENT_ID;
+    }
+    if (savedSecret !== undefined) {
+      process.env.PAYPAL_CLIENT_SECRET = savedSecret;
+    } else {
+      delete process.env.PAYPAL_CLIENT_SECRET;
+    }
+  });
+
   it("isPayPalConfigured returns false when no PayPal config", () => {
     const config = configModule.loadConfig();
     config.paypal = { environment: "sandbox" };
@@ -370,7 +393,7 @@ describe("PayPal audit logging", () => {
       payoutBatchId: "BATCH_TEST_1",
     });
 
-    const auditFile = join(clawpayDir, "audit.log");
+    const auditFile = join(testHome, ".clawpay", "audit.log");
     const lines = readFileSync(auditFile, "utf8").trim().split("\n");
     const lastLine = lines[lines.length - 1];
     const parsed = JSON.parse(lastLine) as Record<string, unknown>;
@@ -391,7 +414,7 @@ describe("PayPal audit logging", () => {
       status: "success",
     });
 
-    const auditFile = join(clawpayDir, "audit.log");
+    const auditFile = join(testHome, ".clawpay", "audit.log");
     const lines = readFileSync(auditFile, "utf8").trim().split("\n");
     const lastLine = lines[lines.length - 1];
     const parsed = JSON.parse(lastLine) as Record<string, unknown>;
@@ -404,7 +427,7 @@ describe("PayPal audit logging", () => {
   it("auditPayPalSetup writes setup entry to audit log", () => {
     guardrailsModule.auditPayPalSetup("success");
 
-    const auditFile = join(clawpayDir, "audit.log");
+    const auditFile = join(testHome, ".clawpay", "audit.log");
     const lines = readFileSync(auditFile, "utf8").trim().split("\n");
     const lastLine = lines[lines.length - 1];
     const parsed = JSON.parse(lastLine) as Record<string, unknown>;
@@ -421,7 +444,7 @@ describe("PayPal audit logging", () => {
       reason: "test",
     });
 
-    const auditFile = join(clawpayDir, "audit.log");
+    const auditFile = join(testHome, ".clawpay", "audit.log");
     const lines = readFileSync(auditFile, "utf8").trim().split("\n");
     const lastLine = lines[lines.length - 1];
     const parsed = JSON.parse(lastLine) as Record<string, unknown>;
@@ -432,13 +455,46 @@ describe("PayPal audit logging", () => {
 });
 
 describe("PayPal sendMoney", () => {
+  let origFetch: typeof globalThis.fetch;
+  let mockPayoutSuccess = true;
+
   before(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    rmSync(join(testHome, ".clawpay", `spend-${today}.json`), { force: true });
+
     process.env.PAYPAL_CLIENT_ID = "fake_paypal_client_id";
     process.env.PAYPAL_CLIENT_SECRET = "fake_paypal_client_secret";
+
+    origFetch = globalThis.fetch;
+    (globalThis as { fetch: unknown }).fetch = async (url: string) => {
+      if ((url as string).includes("/oauth2/token")) {
+        return {
+          ok: true,
+          json: async () => ({ access_token: "fake_token_" + Date.now(), expires_in: 1 }),
+        };
+      }
+      if ((url as string).includes("/payments/payouts")) {
+        if (mockPayoutSuccess) {
+          return {
+            ok: true,
+            json: async () => ({
+              batch_header: { payout_batch_id: "BATCH123", batch_status: "PENDING" },
+            }),
+          };
+        }
+        return {
+          ok: false,
+          status: 400,
+          statusText: "Bad Request",
+          text: async () => "error",
+        };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    };
   });
 
   after(() => {
-    mock.restoreAll();
+    (globalThis as { fetch: typeof origFetch }).fetch = origFetch;
     delete process.env.PAYPAL_CLIENT_ID;
     delete process.env.PAYPAL_CLIENT_SECRET;
   });
@@ -461,7 +517,33 @@ describe("PayPal sendMoney", () => {
     });
 
     assert.strictEqual(result.success, false);
-    assert.ok(result.error?.includes("recipientEmail") || result.error?.includes("recipientPhone"));
+    assert.ok(typeof result.error === "string" && result.error.includes("recipientEmail or recipientPhone"));
+  });
+
+  it("sendMoney returns error when PayPal API returns non-ok response", async () => {
+    mockPayoutSuccess = false;
+    const result = await paypalModule.sendMoney({
+      recipientEmail: "test@example.com",
+      amountCents: 500,
+      currency: "usd",
+    });
+    assert.strictEqual(result.success, false);
+    assert.ok(result.error !== undefined);
+    mockPayoutSuccess = true;
+  });
+
+  it("sendMoney returns success with payoutBatchId on valid request", async () => {
+    mockPayoutSuccess = true;
+    const result = await paypalModule.sendMoney({
+      recipientEmail: "recipient@example.com",
+      amountCents: 500,
+      currency: "usd",
+      note: "Test payment",
+    });
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.payoutBatchId, "BATCH123");
+    assert.strictEqual(result.status, "PENDING");
   });
 
   it("getAccessToken throws when credentials are missing", async () => {
@@ -497,94 +579,44 @@ describe("PayPal sendMoney", () => {
   });
 
   it("getAccessToken throws when OAuth fetch fails", async () => {
-    mock.method(globalThis, "fetch", async () => ({
+    const savedFetch = globalThis.fetch;
+    (globalThis as { fetch: unknown }).fetch = async () => ({
       ok: false,
       status: 401,
       statusText: "Unauthorized",
-    }));
+    });
 
     await assert.rejects(
       () => paypalModule.getAccessToken(),
       /PayPal OAuth failed/i
     );
-    mock.restoreAll();
-  });
-
-  it("sendMoney returns error when PayPal API returns non-ok response", async () => {
-    mock.method(globalThis, "fetch", async (url: string) => {
-      if ((url as string).includes("/oauth2/token")) {
-        return {
-          ok: true,
-          json: async () => ({ access_token: "fake_token_err", expires_in: 1 }),
-        };
-      }
-      return {
-        ok: false,
-        status: 400,
-        statusText: "Bad Request",
-        text: async () => "Invalid request",
-      };
-    });
-
-    const result = await paypalModule.sendMoney({
-      recipientEmail: "test@example.com",
-      amountCents: 500,
-      currency: "usd",
-    });
-
-    assert.strictEqual(result.success, false);
-    assert.ok(result.error !== undefined);
-    mock.restoreAll();
-  });
-
-  it("sendMoney returns success with payoutBatchId on valid request", async () => {
-    mock.method(globalThis, "fetch", async (url: string) => {
-      if ((url as string).includes("/oauth2/token")) {
-        return {
-          ok: true,
-          json: async () => ({ access_token: "fake_token_ok", expires_in: 1 }),
-        };
-      }
-      return {
-        ok: true,
-        json: async () => ({
-          batch_header: { payout_batch_id: "BATCH123", batch_status: "PENDING" },
-        }),
-      };
-    });
-
-    const result = await paypalModule.sendMoney({
-      recipientEmail: "recipient@example.com",
-      amountCents: 500,
-      currency: "usd",
-      note: "Test payment",
-    });
-
-    assert.strictEqual(result.success, true);
-    assert.strictEqual(result.payoutBatchId, "BATCH123");
-    assert.strictEqual(result.status, "PENDING");
-    mock.restoreAll();
+    (globalThis as { fetch: typeof savedFetch }).fetch = savedFetch;
   });
 
   it("getAccessToken returns cached token when cache is still valid", async () => {
-    mock.method(globalThis, "fetch", async (url: string) => {
+    let callCount = 0;
+    const savedFetch = globalThis.fetch;
+    (globalThis as { fetch: unknown }).fetch = async (url: string) => {
       if ((url as string).includes("/oauth2/token")) {
+        callCount++;
         return {
           ok: true,
           json: async () => ({ access_token: "cached_token_3600", expires_in: 3600 }),
         };
       }
       throw new Error(`Unexpected fetch: ${url}`);
-    });
+    };
 
     const first = await paypalModule.getAccessToken();
     const second = await paypalModule.getAccessToken();
     assert.strictEqual(first, second);
-    mock.restoreAll();
+    assert.strictEqual(callCount, 1);
+    (globalThis as { fetch: typeof savedFetch }).fetch = savedFetch;
   });
 
   it("sendMoney returns error when fetch throws an exception", async () => {
-    mock.method(globalThis, "fetch", async (url: string) => {
+    const savedFetch = globalThis.fetch;
+    (globalThis as { fetch: unknown }).fetch = async (url: string) => {
       if ((url as string).includes("/oauth2/token")) {
         return {
           ok: true,
@@ -592,7 +624,7 @@ describe("PayPal sendMoney", () => {
         };
       }
       throw new Error("Network failure");
-    });
+    };
 
     const result = await paypalModule.sendMoney({
       recipientEmail: "test@example.com",
@@ -601,8 +633,8 @@ describe("PayPal sendMoney", () => {
     });
 
     assert.strictEqual(result.success, false);
-    assert.ok(result.error?.includes("Network failure"));
-    mock.restoreAll();
+    assert.ok(typeof result.error === "string" && result.error.includes("Network failure"));
+    (globalThis as { fetch: typeof savedFetch }).fetch = savedFetch;
   });
 });
 
