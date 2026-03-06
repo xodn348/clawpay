@@ -4,6 +4,8 @@ import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 
+export const _spawnSync: { fn: typeof spawnSync } = { fn: spawnSync };
+
 interface McpClientConfig {
   name: string;
   configPath: string;
@@ -194,7 +196,7 @@ export async function installClaudeCode(
   paypalClientId?: string,
   paypalClientSecret?: string
 ): Promise<boolean> {
-  const whichResult = spawnSync("which", ["claude"], { encoding: "utf-8" });
+  const whichResult = _spawnSync.fn("which", ["claude"], { encoding: "utf-8" });
   if (whichResult.status !== 0) {
     return false;
   }
@@ -213,7 +215,7 @@ export async function installClaudeCode(
   args.push("--", "clawpay");
 
   try {
-    const result = spawnSync("claude", args, { encoding: "utf-8" });
+    const result = _spawnSync.fn("claude", args, { encoding: "utf-8" });
     if (result.status !== 0) {
       const errMsg = (result.stderr as string) || "Unknown error";
       console.log(`  Warning: Claude Code configuration failed: ${errMsg.trim()}`);
