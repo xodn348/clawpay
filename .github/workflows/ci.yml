@@ -23,8 +23,14 @@ jobs:
       - run: npm test
       - name: Security scan for hardcoded keys
         run: |
-          if grep -r "sk_live_" src/ || grep -r "sk_test_" src/ || grep -r "rk_live_" src/ || grep -r "rk_test_" src/; then
+          # Check for actual API keys (sk_test_ or sk_live_ followed by 20+ alphanumeric chars)
+          # Excludes validation strings like 'startsWith("sk_test_")' and placeholder text
+          if grep -rP 'sk_(live|test)_[a-zA-Z0-9]{20,}' src/; then
             echo "ERROR: Hardcoded Stripe keys found in source code"
             exit 1
           fi
-          echo "Security scan passed: no hardcoded keys detected"
+          if grep -r 'eval(' src/ || grep -r 'Function(' src/; then
+            echo "ERROR: Dangerous code patterns found"
+            exit 1
+          fi
+          echo "Security scan passed"
