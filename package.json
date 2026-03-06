@@ -18,7 +18,8 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test 'test/integration.test.ts'"
+    "test": "node --import tsx --test 'test/integration.test.ts'",
+    "test:coverage": "c8 --reporter=lcov --reporter=text node --import tsx --test 'test/integration.test.ts'"
   },
   "keywords": [
     "stripe",
@@ -30,14 +31,15 @@
   "license": "Apache-2.0",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.0.0",
-    "stripe": "^17.0.0",
-    "qrcode-terminal": "^0.12.0"
+    "qrcode-terminal": "^0.12.0",
+    "stripe": "^17.0.0"
   },
   "devDependencies": {
-    "typescript": "^5.7.0",
     "@types/node": "^22.0.0",
+    "@types/qrcode-terminal": "^0.12.2",
+    "c8": "^11.0.0",
     "tsx": "^4.0.0",
-    "@types/qrcode-terminal": "^0.12.2"
+    "typescript": "^5.7.0"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
-import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
@@ -161,7 +161,91 @@ describe("Config module and guardrails integration", () => {
   });
 });
 
+describe("Config persistence", () => {
+  it("saveConfig writes and loadConfig reads back", () => {
+    const config = configModule.loadConfig();
+    config.stripe.customerId = "cus_test123";
+    config.stripe.paymentMethodId = "pm_test456";
+    configModule.saveConfig(config);
+
+    const loaded = configModule.loadConfig();
+    assert.strictEqual(loaded.stripe.customerId, "cus_test123");
+    assert.strictEqual(loaded.stripe.paymentMethodId, "pm_test456");
+    assert.strictEqual(loaded.guardrails.maxAmountPerTransactionCents, 10000);
+  });
+
+  it("loadConfig returns defaults when config file contains invalid JSON", () => {
+    const configFile = join(clawpayDir, "config.json");
+    writeFileSync(configFile, "NOT_VALID_JSON{{{", "utf-8");
+
+    const config = configModule.loadConfig();
+    assert.strictEqual(config.guardrails.maxAmountPerTransactionCents, 10000);
+    assert.strictEqual(config.guardrails.maxDailySpendCents, 50000);
+  });
+
+  it("isConfigured returns true when customerId and paymentMethodId are set", () => {
+    const config = configModule.loadConfig();
+    config.stripe.customerId = "cus_test123";
+    config.stripe.paymentMethodId = "pm_test456";
+    configModule.saveConfig(config);
+
+    assert.strictEqual(configModule.isConfigured(), true);
+  });
+
+  it("isConfigured returns false when payment method is missing", () => {
+    const config = configModule.loadConfig();
+    config.stripe.customerId = undefined;
+    config.stripe.paymentMethodId = undefined;
+    configModule.saveConfig(config);
+
+    assert.strictEqual(configModule.isConfigured(), false);
+  });
+});
+
+describe("Daily spend tracking", () => {
+  it("recordSpend and getDailySpend track spending", () => {
+    const before = configModule.getDailySpend();
+    configModule.recordSpend(2500);
+    const after = configModule.getDailySpend();
+    assert.strictEqual(after, before + 2500);
+  });
+
+  it("getDailySpend returns 0 when spend log is corrupt", () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const spendFile = join(clawpayDir, `spend-${today}.json`);
+    writeFileSync(spendFile, "CORRUPT", "utf-8");
+
+    const spend = configModule.getDailySpend();
+    assert.strictEqual(spend, 0);
+
+    rmSync(spendFile, { force: true });
+  });
+
+  it("checkGuardrails blocks zero amount", () => {
+    const result = configModule.checkGuardrails(0, "usd");
+    assert.strictEqual(result.allowed, false);
+    assert.match(result.reason ?? "", /greater than zero/i);
+  });
+
+  it("checkGuardrails blocks when daily limit would be exceeded", () => {
+    // Record enough spend to approach the daily limit
+    configModule.recordSpend(45000);
+    const result = configModule.checkGuardrails(8000, "usd");
+    assert.strictEqual(result.allowed, false);
+    assert.match(result.reason ?? "", /daily/i);
+  });
+});
+
 describe("Audit log integration", () => {
+  it("auditLog creates directory if missing", () => {
+    rmSync(clawpayDir, { recursive: true, force: true });
+
+    guardrailsModule.auditPayment({ amount: 100, currency: "usd", status: "success" });
+
+    const auditFile = join(clawpayDir, "audit.log");
+    assert.ok(existsSync(auditFile));
+  });
+
   it("auditPayment writes to audit log without sensitive data", () => {
     guardrailsModule.auditPayment({ amount: 1000, currency: "usd", status: "success" });
 
@@ -186,6 +270,33 @@ describe("Audit log integration", () => {
     const serialized = JSON.stringify(parsed);
     assert.strictEqual(serialized.includes("sk_"), false);
     assert.strictEqual(serialized.includes("4242"), false);
+  });
+
+  it("auditRefund writes refund entry to audit log", () => {
+    guardrailsModule.auditRefund({ refundId: "re_test789", amount: 500, status: "success" });
+
+    const auditFile = join(clawpayDir, "audit.log");
+    const lines = readFileSync(auditFile, "utf8").trim().split("\n");
+    const lastLine = lines[lines.length - 1];
+    const parsed = JSON.parse(lastLine) as Record<string, unknown>;
+
+    assert.strictEqual(parsed["action"], "refund");
+    assert.strictEqual(parsed["refundId"], "re_test789");
+    assert.strictEqual(parsed["amount"], 500);
+    assert.strictEqual(parsed["status"], "success");
+  });
+
+  it("auditSetup writes setup entry to audit log", () => {
+    guardrailsModule.auditSetup("failed", "User cancelled");
+
+    const auditFile = join(clawpayDir, "audit.log");
+    const lines = readFileSync(auditFile, "utf8").trim().split("\n");
+    const lastLine = lines[lines.length - 1];
+    const parsed = JSON.parse(lastLine) as Record<string, unknown>;
+
+    assert.strictEqual(parsed["action"], "setup_payment");
+    assert.strictEqual(parsed["status"], "failed");
+    assert.strictEqual(parsed["reason"], "User cancelled");
   });
 });
 
