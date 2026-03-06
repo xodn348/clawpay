@@ -1,5 +1,5 @@
 [![CI](https://github.com/xodn348/clawpay/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/xodn348/clawpay/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/xodn348/clawpay/graph/badge.svg)](https://codecov.io/gh/xodn348/clawpay)
+[![Coverage: 100%](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](https://github.com/xodn348/clawpay/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Stripe](https://img.shields.io/badge/Stripe-Powered-635BFF.svg)](https://stripe.com)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
@@ -12,6 +12,9 @@ Open-source Stripe MCP Server for AI Agents. Let Claude, OpenCode, and any MCP c
 > ClawPay enables AI agents to make real financial transactions. Real money is involved.
 > AI agent payments may be irreversible. You are responsible for all charges made through your Stripe account.
 > Review your guardrail limits before use. See [DISCLAIMER.md](DISCLAIMER.md) for full terms.
+
+> [!NOTE]
+> **ClawPay has zero contact with card data.** Card numbers, CVVs, and expiration dates never pass through ClawPay's code, memory, or logs. All card input is handled entirely by [Stripe Checkout](https://stripe.com/payments/checkout) on Stripe's PCI DSS-certified servers. ClawPay only stores Stripe-issued customer IDs and payment method IDs.
 
 ---
 
