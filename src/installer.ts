@@ -83,26 +83,34 @@ function getMcpClients(): McpClientConfig[] {
 
 function buildClawPayEntry(
   stripeKey: string,
-  mcpKey: "mcp" | "mcpServers"
+  mcpKey: "mcp" | "mcpServers",
+  paypalClientId?: string,
+  paypalClientSecret?: string
 ): Record<string, unknown> {
   if (mcpKey === "mcp") {
+    const environment: Record<string, string> = {
+      STRIPE_SECRET_KEY: stripeKey,
+    };
+    if (paypalClientId) environment["PAYPAL_CLIENT_ID"] = paypalClientId;
+    if (paypalClientSecret) environment["PAYPAL_CLIENT_SECRET"] = paypalClientSecret;
     return {
       clawpay: {
         type: "local",
         command: ["clawpay"],
-        environment: {
-          STRIPE_SECRET_KEY: stripeKey,
-        },
+        environment,
       },
     };
   }
+  const env: Record<string, string> = {
+    STRIPE_SECRET_KEY: stripeKey,
+  };
+  if (paypalClientId) env["PAYPAL_CLIENT_ID"] = paypalClientId;
+  if (paypalClientSecret) env["PAYPAL_CLIENT_SECRET"] = paypalClientSecret;
   return {
     clawpay: {
       command: "clawpay",
       args: [],
-      env: {
-        STRIPE_SECRET_KEY: stripeKey,
-      },
+      env,
     },
   };
 }
@@ -122,6 +130,21 @@ export async function runInstall(): Promise<void> {
   // Never log the full key — show a masked version only
   const maskedKey = `sk_...${stripeKey.slice(-4)}`;
   console.log(`\nConfiguring MCP clients with key ${maskedKey}...`);
+
+  let paypalClientId: string | undefined;
+  let paypalClientSecret: string | undefined;
+
+  const configurePaypal = await askQuestion(
+    "\nDo you want to configure PayPal? (y/N): "
+  );
+  if (configurePaypal === "y" || configurePaypal === "Y") {
+    paypalClientId = await askQuestion("Enter your PayPal Client ID: ");
+    paypalClientSecret = await askQuestion(
+      "Enter your PayPal Client Secret: "
+    );
+    const maskedPaypalId = `${paypalClientId.slice(0, 8)}...`;
+    console.log(`  PayPal Client ID: ${maskedPaypalId}`);
+  }
 
   const clients = getMcpClients();
   let configuredCount = 0;
@@ -147,7 +170,7 @@ export async function runInstall(): Promise<void> {
       continue;
     }
 
-    const entry = buildClawPayEntry(stripeKey, client.mcpKey);
+    const entry = buildClawPayEntry(stripeKey, client.mcpKey, paypalClientId, paypalClientSecret);
     config[client.mcpKey] = { ...mcpSection, ...entry };
 
     await fs.writeFile(
@@ -163,6 +186,15 @@ export async function runInstall(): Promise<void> {
     console.log(
       "\nNo MCP client config files found. Add clawpay manually:"
     );
+
+    const openCodeEnv: Record<string, string> = { STRIPE_SECRET_KEY: maskedKey };
+    if (paypalClientId) openCodeEnv["PAYPAL_CLIENT_ID"] = paypalClientId;
+    if (paypalClientSecret) openCodeEnv["PAYPAL_CLIENT_SECRET"] = paypalClientSecret;
+
+    const desktopEnv: Record<string, string> = { STRIPE_SECRET_KEY: maskedKey };
+    if (paypalClientId) desktopEnv["PAYPAL_CLIENT_ID"] = paypalClientId;
+    if (paypalClientSecret) desktopEnv["PAYPAL_CLIENT_SECRET"] = paypalClientSecret;
+
     console.log("\nOpenCode (~/.config/opencode/config.json):");
     console.log(
       JSON.stringify(
@@ -171,7 +203,7 @@ export async function runInstall(): Promise<void> {
             clawpay: {
               type: "local",
               command: ["clawpay"],
-              environment: { STRIPE_SECRET_KEY: maskedKey },
+              environment: openCodeEnv,
             },
           },
         },
@@ -189,7 +221,7 @@ export async function runInstall(): Promise<void> {
             clawpay: {
               command: "clawpay",
               args: [],
-              env: { STRIPE_SECRET_KEY: maskedKey },
+              env: desktopEnv,
             },
           },
         },

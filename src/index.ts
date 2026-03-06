@@ -6,6 +6,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { isConfigured } from "./config.js";
 import { createPayment, getBalance, listTransactions, refundPayment } from "./stripe.js";
+import { sendMoney } from "./paypal.js";
 
 type JsonObject = Record<string, unknown>;
 type InstallerAction = "install" | "uninstall";
@@ -63,6 +64,15 @@ async function getRunSetup(): Promise<() => Promise<unknown>> {
     throw new Error("setup_payment is not available: runSetup() is not implemented in ./setup.js.");
   }
   return runSetup as () => Promise<unknown>;
+}
+
+async function getRunPayPalSetup(): Promise<() => Promise<{ success: boolean; message: string }>> {
+  const setupModule = (await import("./setup-paypal.js")) as JsonObject;
+  const runPayPalSetup = setupModule["runPayPalSetup"];
+  if (typeof runPayPalSetup !== "function") {
+    throw new Error("setup_paypal is not available: runPayPalSetup() is not implemented in ./setup-paypal.js.");
+  }
+  return runPayPalSetup as () => Promise<{ success: boolean; message: string }>;
 }
 
 async function runInstallerAction(action: InstallerAction): Promise<void> {
@@ -154,6 +164,31 @@ async function runServer(): Promise<void> {
           additionalProperties: false,
         },
       },
+      {
+        name: "setup_paypal",
+        description: "Link PayPal account using Client ID and Client Secret. Reads credentials from PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET environment variables or config file.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+      {
+        name: "send_paypal",
+        description: "Send money via PayPal Payouts to an email address or phone number.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            recipientEmail: { type: "string", description: "PayPal email address of recipient." },
+            recipientPhone: { type: "string", description: "Phone number of recipient in E.164 format." },
+            amount: { type: "number", description: "Amount in cents (e.g. 2000 for $20.00)." },
+            currency: { type: "string", description: "ISO 4217 currency code (default: usd)." },
+            note: { type: "string", description: "Optional note to recipient." },
+          },
+          required: ["amount"],
+          additionalProperties: false,
+        },
+      },
     ],
   }));
 
@@ -207,6 +242,33 @@ async function runServer(): Promise<void> {
         try {
           const paymentIntentId = requireString(args["payment_intent_id"], "payment_intent_id");
           const result = await refundPayment(paymentIntentId);
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "setup_paypal": {
+        try {
+          const runPayPalSetup = await getRunPayPalSetup();
+          const result = await runPayPalSetup();
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "send_paypal": {
+        try {
+          const recipientEmail = typeof args["recipientEmail"] === "string" ? args["recipientEmail"] : undefined;
+          const recipientPhone = typeof args["recipientPhone"] === "string" ? args["recipientPhone"] : undefined;
+          if (!recipientEmail && !recipientPhone) {
+            return errorResult(new Error("Either recipientEmail or recipientPhone is required."));
+          }
+          const amount = requireNumber(args["amount"], "amount");
+          const currency = typeof args["currency"] === "string" ? args["currency"] : "usd";
+          const note = typeof args["note"] === "string" ? args["note"] : undefined;
+          const result = await sendMoney({ recipientEmail, recipientPhone, amountCents: amount, currency, note });
           return successResult(result);
         } catch (error) {
           return errorResult(error);
