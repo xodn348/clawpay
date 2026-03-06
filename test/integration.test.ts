@@ -2,10 +2,12 @@ import assert from "node:assert";
 import { after, before, describe, it } from "node:test";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, dirname } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
-const projectRoot = resolve(import.meta.dirname, "..");
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const projectRoot = resolve(__dirname, "..");
 const testHome = mkdtempSync(join(tmpdir(), "clawpay-integration-"));
 const clawpayDir = join(testHome, ".clawpay");
 
