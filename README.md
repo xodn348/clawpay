@@ -1,7 +1,8 @@
 [![CI](https://github.com/xodn348/clawpay/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/xodn348/clawpay/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/xodn348/clawpay/graph/badge.svg)](https://codecov.io/gh/xodn348/clawpay)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Stripe](https://img.shields.io/badge/Stripe-Powered-635BFF)](https://stripe.com)
-[![MCP](https://img.shields.io/badge/MCP-Compatible-green)](https://modelcontextprotocol.io)
+[![Stripe](https://img.shields.io/badge/Stripe-Powered-635BFF.svg)](https://stripe.com)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
 
 # ClawPay
 

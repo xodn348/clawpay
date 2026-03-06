@@ -21,6 +21,16 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - name: Upload coverage
+        if: matrix.node-version == '22.x'
+        run: npm run test:coverage
+      - name: Upload to Codecov
+        if: matrix.node-version == '22.x'
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage/lcov.info
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
       - name: Security scan for hardcoded keys
         run: |
           # Check for actual API keys (sk_test_ or sk_live_ followed by 20+ alphanumeric chars)
