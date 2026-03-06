@@ -1,11 +1,11 @@
 {
-  "name": "clawpay",
-  "version": "0.1.0",
+  "name": "@xodn348/clawpay",
+  "version": "0.1.1",
   "description": "Open-source Stripe MCP Server for AI agents",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "clawpay": "./dist/index.js"
+    "clawpay": "dist/index.js"
   },
   "files": [
     "dist",
@@ -19,7 +19,8 @@
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test 'test/integration.test.ts'",
-    "test:coverage": "c8 --reporter=lcov --reporter=text node --import tsx --test 'test/integration.test.ts'"
+    "test:coverage": "c8 --reporter=lcov --reporter=text node --import tsx --test 'test/integration.test.ts'",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "stripe",
@@ -43,5 +44,12 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/xodn348/clawpay.git"
   }
 }
