@@ -21,16 +21,17 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
-      - name: Upload coverage
+      - name: Verify coverage
         if: matrix.node-version == '22.x'
-        run: npm run test:coverage
-      - name: Upload to Codecov
-        if: matrix.node-version == '22.x'
-        uses: codecov/codecov-action@v5
-        with:
-          files: coverage/lcov.info
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
+        run: |
+          npm run test:coverage
+          COVERAGE=$(npx c8 report --reporter=text-summary 2>/dev/null | grep 'Statements' | awk '{print $3}' | tr -d '%')
+          echo "Coverage: ${COVERAGE}%"
+          INT_COV=${COVERAGE%.*}
+          if [ "$INT_COV" -lt 90 ]; then
+            echo "ERROR: Coverage dropped below 90% (${COVERAGE}%)"
+            exit 1
+          fi
       - name: Security scan for hardcoded keys
         run: |
           # Check for actual API keys (sk_test_ or sk_live_ followed by 20+ alphanumeric chars)
