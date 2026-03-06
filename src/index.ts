@@ -1,3 +1,252 @@
 #!/usr/bin/env node
 
-export {};
+import { createRequire } from "node:module";
+import { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { CallToolRequestSchema, ListToolsRequestSchema, type CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { isConfigured } from "./config.js";
+import { createPayment, getBalance, listTransactions, refundPayment } from "./stripe.js";
+
+type JsonObject = Record<string, unknown>;
+type InstallerAction = "install" | "uninstall";
+
+const require = createRequire(import.meta.url);
+const packageJson = require("../package.json") as { version?: string };
+const VERSION = typeof packageJson.version === "string" ? packageJson.version : "0.0.0";
+
+function successResult(result: unknown): CallToolResult {
+  return {
+    content: [{ type: "text", text: JSON.stringify(result) }],
+  };
+}
+
+function errorResult(error: unknown): CallToolResult {
+  const message = error instanceof Error ? error.message : "Unknown error";
+  return {
+    content: [{ type: "text", text: message }],
+    isError: true,
+  };
+}
+
+function asObject(value: unknown): JsonObject {
+  return value !== null && typeof value === "object" ? (value as JsonObject) : {};
+}
+
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) {
+    throw new Error(`Invalid or missing '${field}'.`);
+  }
+  return value;
+}
+
+function requireNumber(value: unknown, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error(`Invalid or missing '${field}'.`);
+  }
+  return value;
+}
+
+function optionalPositiveInt(value: unknown, field: string): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`Invalid '${field}'. Expected a positive integer.`);
+  }
+  return value;
+}
+
+async function getRunSetup(): Promise<() => Promise<unknown>> {
+  const setupModule = (await import("./setup.js")) as JsonObject;
+  const runSetup = setupModule["runSetup"];
+  if (typeof runSetup !== "function") {
+    throw new Error("setup_payment is not available: runSetup() is not implemented in ./setup.js.");
+  }
+  return runSetup as () => Promise<unknown>;
+}
+
+async function runInstallerAction(action: InstallerAction): Promise<void> {
+  const installerModule = (await import("./installer.js")) as JsonObject;
+  const candidates =
+    action === "install"
+      ? ["install", "runInstall", "runInstaller", "setup", "default"]
+      : ["uninstall", "runUninstall", "remove", "teardown", "default"];
+
+  for (const candidate of candidates) {
+    const fn = installerModule[candidate];
+    if (typeof fn === "function") {
+      await Promise.resolve(fn());
+      return;
+    }
+  }
+
+  throw new Error(`'${action}' is not available: missing function export in ./installer.js.`);
+}
+
+async function runServer(): Promise<void> {
+  if (!process.env["STRIPE_SECRET_KEY"]) {
+    console.error("STRIPE_SECRET_KEY environment variable is required to run the MCP server.");
+    process.exit(1);
+  }
+
+  const server = new Server(
+    { name: "clawpay", version: VERSION },
+    { capabilities: { tools: {} } },
+  );
+
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [
+      {
+        name: "setup_payment",
+        description: "Set up Stripe payment method for ClawPay.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+      {
+        name: "pay",
+        description: "Create and confirm a payment in cents.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            amount: { type: "number", description: "Amount in cents." },
+            currency: { type: "string", description: "Currency code (for example: usd)." },
+            description: { type: "string", description: "Payment description." },
+          },
+          required: ["amount", "currency", "description"],
+          additionalProperties: false,
+        },
+      },
+      {
+        name: "get_balance",
+        description: "Get Stripe account balance.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+      {
+        name: "list_transactions",
+        description: "List recent payment transactions.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            limit: {
+              type: "number",
+              description: "Optional max items to return.",
+            },
+          },
+          additionalProperties: false,
+        },
+      },
+      {
+        name: "refund",
+        description: "Refund a payment intent.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            payment_intent_id: { type: "string", description: "Stripe payment intent ID." },
+          },
+          required: ["payment_intent_id"],
+          additionalProperties: false,
+        },
+      },
+    ],
+  }));
+
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const name = request.params.name;
+    const args = asObject(request.params.arguments);
+
+    switch (name) {
+      case "setup_payment": {
+        try {
+          const runSetup = await getRunSetup();
+          const result = await runSetup();
+          return successResult({ result, configured: isConfigured() });
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "pay": {
+        try {
+          const amount = requireNumber(args["amount"], "amount");
+          const currency = requireString(args["currency"], "currency");
+          const description = requireString(args["description"], "description");
+          const result = await createPayment({ amount, currency, description });
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "get_balance": {
+        try {
+          const result = await getBalance();
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "list_transactions": {
+        try {
+          const limit = optionalPositiveInt(args["limit"], "limit");
+          const result = await listTransactions(limit);
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "refund": {
+        try {
+          const paymentIntentId = requireString(args["payment_intent_id"], "payment_intent_id");
+          const result = await refundPayment(paymentIntentId);
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      default:
+        return errorResult(new Error(`Unknown tool: ${name}`));
+    }
+  });
+
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+async function main(): Promise<void> {
+  const command = process.argv[2];
+
+  if (command === "install") {
+    await runInstallerAction("install");
+    return;
+  }
+
+  if (command === "uninstall") {
+    await runInstallerAction("uninstall");
+    return;
+  }
+
+  if (command !== undefined) {
+    console.error(`Unknown command: ${command}`);
+    console.error("Usage: clawpay [install|uninstall]");
+    process.exitCode = 1;
+    return;
+  }
+
+  await runServer();
+}
+
+main().catch((error) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(message);
+  process.exit(1);
+});
