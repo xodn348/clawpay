@@ -16,3 +16,4 @@ yarn-error.log*
 .cache/
 coverage/
 .nyc_output/
+.sisyphus/

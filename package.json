@@ -12,7 +12,7 @@
     "LICENSE",
     "README.md",
     "DISCLAIMER.md",
-    "Formula"
+    "skill"
   ],
   "scripts": {
     "build": "tsc",
