@@ -45,3 +45,18 @@ jobs:
             exit 1
           fi
           echo "Security scan passed"
+      - name: Security scan - PayPal credentials
+        run: |
+          # Check for hardcoded PayPal Client IDs (80+ character alphanumeric strings)
+          # Pattern: PAYPAL_CLIENT_ID = followed by a long alphanumeric string
+          # Excludes environment variable references like process.env.PAYPAL_CLIENT_ID
+          if grep -rn 'PAYPAL_CLIENT_ID\s*=\s*[A-Za-z0-9]\{80,\}' src/; then
+            echo "ERROR: Hardcoded PayPal Client ID found in source code"
+            exit 1
+          fi
+          # Also check for hardcoded PayPal Client Secrets (similar pattern)
+          if grep -rn 'PAYPAL_CLIENT_SECRET\s*=\s*[A-Za-z0-9]\{40,\}' src/; then
+            echo "ERROR: Hardcoded PayPal Client Secret found in source code"
+            exit 1
+          fi
+          echo "PayPal credentials security scan passed"

@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { after, before, describe, it } from "node:test";
+import { after, before, describe, it, mock } from "node:test";
 import { mkdtempSync, readFileSync, writeFileSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
@@ -16,9 +16,11 @@ process.env.USERPROFILE = testHome;
 
 type ConfigModule = typeof import("../src/config.js");
 type GuardrailsModule = typeof import("../src/guardrails.js");
+type PaypalModule = typeof import("../src/paypal.js");
 
 let configModule: ConfigModule;
 let guardrailsModule: GuardrailsModule;
+let paypalModule: PaypalModule;
 
 function collectTsFiles(dir: string): string[] {
   const files: string[] = [];
@@ -122,6 +124,7 @@ before(async () => {
   rmSync(clawpayDir, { recursive: true, force: true });
   configModule = await import("../src/config.js");
   guardrailsModule = await import("../src/guardrails.js");
+  paypalModule = await import("../src/paypal.js");
 });
 
 after(() => {
@@ -310,10 +313,10 @@ describe("MCP server smoke test", () => {
     assert.strictEqual(build.status, 0, `TypeScript build failed: ${build.stderr || build.stdout}`);
   });
 
-  it("MCP tools/list returns all five tools", async () => {
+  it("MCP tools/list returns all seven tools", async () => {
     const tools = await requestToolsList();
 
-    assert.strictEqual(tools.length, 5);
+    assert.strictEqual(tools.length, 7);
     const names = tools
       .map((tool) => (typeof tool === "object" && tool !== null ? (tool as { name?: unknown }).name : undefined))
       .filter((name): name is string => typeof name === "string");
@@ -323,6 +326,174 @@ describe("MCP server smoke test", () => {
     assert.ok(names.includes("get_balance"));
     assert.ok(names.includes("list_transactions"));
     assert.ok(names.includes("refund"));
+    assert.ok(names.includes("setup_paypal"));
+    assert.ok(names.includes("send_paypal"));
+  });
+});
+
+describe("PayPal config", () => {
+  it("isPayPalConfigured returns false when no PayPal config", () => {
+    const config = configModule.loadConfig();
+    config.paypal = { environment: "sandbox" };
+    configModule.saveConfig(config);
+
+    assert.strictEqual(configModule.isPayPalConfigured(), false);
+  });
+
+  it("isPayPalConfigured returns true when clientId and clientSecret are set", () => {
+    const config = configModule.loadConfig();
+    config.paypal = { clientId: "fake_id", clientSecret: "fake_secret", environment: "sandbox" };
+    configModule.saveConfig(config);
+
+    assert.strictEqual(configModule.isPayPalConfigured(), true);
+
+    const clean = configModule.loadConfig();
+    clean.paypal = { environment: "sandbox" };
+    configModule.saveConfig(clean);
+  });
+});
+
+describe("PayPal audit logging", () => {
+  it("auditPayPalSend with email writes masked email to audit log", () => {
+    guardrailsModule.auditPayPalSend({
+      amount: 2000,
+      currency: "usd",
+      recipientEmail: "john@example.com",
+      status: "success",
+      payoutBatchId: "BATCH_TEST_1",
+    });
+
+    const auditFile = join(clawpayDir, "audit.log");
+    const lines = readFileSync(auditFile, "utf8").trim().split("\n");
+    const lastLine = lines[lines.length - 1];
+    const parsed = JSON.parse(lastLine) as Record<string, unknown>;
+
+    assert.strictEqual(parsed["action"], "paypal_send");
+    assert.strictEqual(parsed["amount"], 2000);
+    assert.strictEqual(parsed["status"], "success");
+    assert.ok(typeof parsed["recipientMasked"] === "string");
+    assert.ok((parsed["recipientMasked"] as string).includes("@"));
+    assert.ok((parsed["recipientMasked"] as string).includes("***"));
+  });
+
+  it("auditPayPalSend with phone writes masked phone to audit log", () => {
+    guardrailsModule.auditPayPalSend({
+      amount: 1000,
+      currency: "usd",
+      recipientPhone: "+12345678901",
+      status: "success",
+    });
+
+    const auditFile = join(clawpayDir, "audit.log");
+    const lines = readFileSync(auditFile, "utf8").trim().split("\n");
+    const lastLine = lines[lines.length - 1];
+    const parsed = JSON.parse(lastLine) as Record<string, unknown>;
+
+    assert.strictEqual(parsed["action"], "paypal_send");
+    assert.ok(typeof parsed["recipientMasked"] === "string");
+    assert.ok((parsed["recipientMasked"] as string).includes("***"));
+  });
+
+  it("auditPayPalSetup writes setup entry to audit log", () => {
+    guardrailsModule.auditPayPalSetup("success");
+
+    const auditFile = join(clawpayDir, "audit.log");
+    const lines = readFileSync(auditFile, "utf8").trim().split("\n");
+    const lastLine = lines[lines.length - 1];
+    const parsed = JSON.parse(lastLine) as Record<string, unknown>;
+
+    assert.strictEqual(parsed["action"], "setup_paypal");
+    assert.strictEqual(parsed["status"], "success");
+  });
+});
+
+describe("PayPal sendMoney", () => {
+  before(() => {
+    process.env.PAYPAL_CLIENT_ID = "fake_paypal_client_id";
+    process.env.PAYPAL_CLIENT_SECRET = "fake_paypal_client_secret";
+  });
+
+  after(() => {
+    mock.restoreAll();
+    delete process.env.PAYPAL_CLIENT_ID;
+    delete process.env.PAYPAL_CLIENT_SECRET;
+  });
+
+  it("sendMoney blocked by guardrails when amount exceeds per-transaction limit", async () => {
+    const result = await paypalModule.sendMoney({
+      recipientEmail: "test@example.com",
+      amountCents: 15000,
+      currency: "usd",
+    });
+
+    assert.strictEqual(result.success, false);
+    assert.ok(result.error !== undefined);
+  });
+
+  it("sendMoney returns error when neither recipientEmail nor recipientPhone provided", async () => {
+    const result = await paypalModule.sendMoney({
+      amountCents: 500,
+      currency: "usd",
+    });
+
+    assert.strictEqual(result.success, false);
+    assert.ok(result.error?.includes("recipientEmail") || result.error?.includes("recipientPhone"));
+  });
+
+  it("sendMoney returns error when PayPal API returns non-ok response", async () => {
+    mock.method(globalThis, "fetch", async (url: string) => {
+      if ((url as string).includes("/oauth2/token")) {
+        return {
+          ok: true,
+          json: async () => ({ access_token: "fake_token_err", expires_in: 1 }),
+        };
+      }
+      return {
+        ok: false,
+        status: 400,
+        statusText: "Bad Request",
+        text: async () => "Invalid request",
+      };
+    });
+
+    const result = await paypalModule.sendMoney({
+      recipientEmail: "test@example.com",
+      amountCents: 500,
+      currency: "usd",
+    });
+
+    assert.strictEqual(result.success, false);
+    assert.ok(result.error !== undefined);
+    mock.restoreAll();
+  });
+
+  it("sendMoney returns success with payoutBatchId on valid request", async () => {
+    mock.method(globalThis, "fetch", async (url: string) => {
+      if ((url as string).includes("/oauth2/token")) {
+        return {
+          ok: true,
+          json: async () => ({ access_token: "fake_token_ok", expires_in: 1 }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          batch_header: { payout_batch_id: "BATCH123", batch_status: "PENDING" },
+        }),
+      };
+    });
+
+    const result = await paypalModule.sendMoney({
+      recipientEmail: "recipient@example.com",
+      amountCents: 500,
+      currency: "usd",
+      note: "Test payment",
+    });
+
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.payoutBatchId, "BATCH123");
+    assert.strictEqual(result.status, "PENDING");
+    mock.restoreAll();
   });
 });
 
