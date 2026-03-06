@@ -18,7 +18,7 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/"
+    "test": "node --import tsx --test test/**/*.ts"
   },
   "keywords": [
     "stripe",
