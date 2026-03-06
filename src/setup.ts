@@ -37,8 +37,16 @@ export async function runSetup(): Promise<{ success: boolean; message: string }>
   const stripe = getStripe();
   let checkoutUrl: string;
   try {
+    const config = loadConfig();
+    let customerId = config.stripe.customerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({ metadata: { source: "clawpay" } });
+      customerId = customer.id;
+    }
+
     const session = await stripe.checkout.sessions.create({
       mode: "setup",
+      customer: customerId,
       payment_method_types: ["card"],
       success_url: `http://${SETUP_HOST}:${SETUP_PORT}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `http://${SETUP_HOST}:${SETUP_PORT}/cancel`,
