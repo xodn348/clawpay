@@ -21,7 +21,7 @@ Open-source Stripe MCP Server for AI Agents. Let Claude, OpenCode, and any MCP c
 ## Quick Start
 
 ```bash
-npm install -g clawpay
+npm install -g @xodn348/clawpay
 clawpay install
 ```
 
@@ -40,10 +40,10 @@ Once installed, open your AI assistant and say: **"set up payment method"** to r
 
 ```bash
 # npm
-npm install -g clawpay
+npm install -g @xodn348/clawpay
 
 # bun
-bun add -g clawpay
+bun add -g @xodn348/clawpay
 
 # brew (coming soon)
 brew tap xodn348/clawpay
