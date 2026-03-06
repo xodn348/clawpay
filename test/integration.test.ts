@@ -351,6 +351,13 @@ describe("PayPal config", () => {
     clean.paypal = { environment: "sandbox" };
     configModule.saveConfig(clean);
   });
+
+  it("loadConfig applies PAYPAL_ENVIRONMENT=production override", () => {
+    process.env.PAYPAL_ENVIRONMENT = "production";
+    const config = configModule.loadConfig();
+    assert.strictEqual(config.paypal?.environment, "production");
+    delete process.env.PAYPAL_ENVIRONMENT;
+  });
 });
 
 describe("PayPal audit logging", () => {
@@ -405,6 +412,23 @@ describe("PayPal audit logging", () => {
     assert.strictEqual(parsed["action"], "setup_paypal");
     assert.strictEqual(parsed["status"], "success");
   });
+
+  it("auditPayPalSend with no recipient writes undefined recipientMasked", () => {
+    guardrailsModule.auditPayPalSend({
+      amount: 500,
+      currency: "usd",
+      status: "blocked",
+      reason: "test",
+    });
+
+    const auditFile = join(clawpayDir, "audit.log");
+    const lines = readFileSync(auditFile, "utf8").trim().split("\n");
+    const lastLine = lines[lines.length - 1];
+    const parsed = JSON.parse(lastLine) as Record<string, unknown>;
+
+    assert.strictEqual(parsed["action"], "paypal_send");
+    assert.strictEqual(parsed["recipientMasked"], undefined);
+  });
 });
 
 describe("PayPal sendMoney", () => {
@@ -438,6 +462,52 @@ describe("PayPal sendMoney", () => {
 
     assert.strictEqual(result.success, false);
     assert.ok(result.error?.includes("recipientEmail") || result.error?.includes("recipientPhone"));
+  });
+
+  it("getAccessToken throws when credentials are missing", async () => {
+    delete process.env.PAYPAL_CLIENT_ID;
+    delete process.env.PAYPAL_CLIENT_SECRET;
+
+    const config = configModule.loadConfig();
+    config.paypal = { environment: "sandbox" };
+    configModule.saveConfig(config);
+
+    await assert.rejects(
+      () => paypalModule.getAccessToken(),
+      /credentials not configured/i
+    );
+
+    process.env.PAYPAL_CLIENT_ID = "fake_paypal_client_id";
+    process.env.PAYPAL_CLIENT_SECRET = "fake_paypal_client_secret";
+  });
+
+  it("verifyPayPalConnection returns false when credentials are missing", async () => {
+    delete process.env.PAYPAL_CLIENT_ID;
+    delete process.env.PAYPAL_CLIENT_SECRET;
+
+    const config = configModule.loadConfig();
+    config.paypal = { environment: "sandbox" };
+    configModule.saveConfig(config);
+
+    const result = await paypalModule.verifyPayPalConnection();
+    assert.strictEqual(result, false);
+
+    process.env.PAYPAL_CLIENT_ID = "fake_paypal_client_id";
+    process.env.PAYPAL_CLIENT_SECRET = "fake_paypal_client_secret";
+  });
+
+  it("getAccessToken throws when OAuth fetch fails", async () => {
+    mock.method(globalThis, "fetch", async () => ({
+      ok: false,
+      status: 401,
+      statusText: "Unauthorized",
+    }));
+
+    await assert.rejects(
+      () => paypalModule.getAccessToken(),
+      /PayPal OAuth failed/i
+    );
+    mock.restoreAll();
   });
 
   it("sendMoney returns error when PayPal API returns non-ok response", async () => {
@@ -493,6 +563,45 @@ describe("PayPal sendMoney", () => {
     assert.strictEqual(result.success, true);
     assert.strictEqual(result.payoutBatchId, "BATCH123");
     assert.strictEqual(result.status, "PENDING");
+    mock.restoreAll();
+  });
+
+  it("getAccessToken returns cached token when cache is still valid", async () => {
+    mock.method(globalThis, "fetch", async (url: string) => {
+      if ((url as string).includes("/oauth2/token")) {
+        return {
+          ok: true,
+          json: async () => ({ access_token: "cached_token_3600", expires_in: 3600 }),
+        };
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const first = await paypalModule.getAccessToken();
+    const second = await paypalModule.getAccessToken();
+    assert.strictEqual(first, second);
+    mock.restoreAll();
+  });
+
+  it("sendMoney returns error when fetch throws an exception", async () => {
+    mock.method(globalThis, "fetch", async (url: string) => {
+      if ((url as string).includes("/oauth2/token")) {
+        return {
+          ok: true,
+          json: async () => ({ access_token: "fake_token_throw", expires_in: 1 }),
+        };
+      }
+      throw new Error("Network failure");
+    });
+
+    const result = await paypalModule.sendMoney({
+      recipientEmail: "test@example.com",
+      amountCents: 500,
+      currency: "usd",
+    });
+
+    assert.strictEqual(result.success, false);
+    assert.ok(result.error?.includes("Network failure"));
     mock.restoreAll();
   });
 });
