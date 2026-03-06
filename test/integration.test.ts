@@ -1,6 +1,6 @@
 import assert from "node:assert";
 import { after, before, describe, it, mock } from "node:test";
-import { mkdtempSync, readFileSync, writeFileSync, readdirSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, dirname } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
@@ -17,6 +17,7 @@ process.env.USERPROFILE = testHome;
 type ConfigModule = typeof import("../src/config.js");
 type GuardrailsModule = typeof import("../src/guardrails.js");
 type PaypalModule = typeof import("../src/paypal.js");
+type InstallerModule = typeof import("../src/installer.js");
 
 let configModule: ConfigModule;
 let guardrailsModule: GuardrailsModule;
@@ -650,5 +651,110 @@ describe("Security scan", () => {
       assert.strictEqual(/sk_test_[a-zA-Z0-9]{20,}/.test(content), false, `Found hardcoded Stripe key in ${filePath}`);
       assert.strictEqual(content.includes("eval("), false, `Found eval usage in ${filePath}`);
     }
+  });
+});
+
+describe("Dynamic Payment Methods", () => {
+  it("setup.ts session create does not include payment_method_types", () => {
+    const setupPath = join(projectRoot, "src", "setup.ts");
+    const content = readFileSync(setupPath, "utf8");
+    assert.strictEqual(
+      content.includes("payment_method_types"),
+      false,
+      "setup.ts must not contain payment_method_types to use Dynamic Payment Methods"
+    );
+  });
+});
+
+describe("installer: installClaudeCode", () => {
+  let installerModule: InstallerModule;
+  let savedPath: string | undefined;
+
+  before(async () => {
+    installerModule = await import("../src/installer.js");
+    savedPath = process.env.PATH;
+  });
+
+  after(() => {
+    if (savedPath !== undefined) {
+      process.env.PATH = savedPath;
+    }
+  });
+
+  it("returns true when claude is found and mcp add succeeds", async () => {
+    const binDir = mkdtempSync(join(tmpdir(), "clawpay-bin-"));
+    try {
+      const claudeScript = join(binDir, "claude");
+      writeFileSync(claudeScript, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+      process.env.PATH = `/usr/bin:/bin:${binDir}`;
+      const result = await installerModule.installClaudeCode(
+        "sk_test_fake",
+        "paypal_client_id_test",
+        "paypal_secret_test"
+      );
+      assert.strictEqual(result, true);
+    } finally {
+      rmSync(binDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns false when claude binary is not found in PATH", async () => {
+    const emptyDir = mkdtempSync(join(tmpdir(), "clawpay-empty-"));
+    try {
+      process.env.PATH = `/usr/bin:/bin:${emptyDir}`;
+      const result = await installerModule.installClaudeCode("sk_test_fake");
+      assert.strictEqual(result, false);
+    } finally {
+      rmSync(emptyDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns false and logs warning when claude mcp add returns non-zero", async () => {
+    const binDir = mkdtempSync(join(tmpdir(), "clawpay-bin-"));
+    try {
+      const claudeScript = join(binDir, "claude");
+      writeFileSync(claudeScript, "#!/bin/sh\nexit 1\n", { mode: 0o755 });
+      process.env.PATH = `/usr/bin:/bin:${binDir}`;
+      const result = await installerModule.installClaudeCode("sk_test_fake");
+      assert.strictEqual(result, false);
+    } finally {
+      rmSync(binDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("installer: installOpenClaw", () => {
+  let installerModule: InstallerModule;
+  const openClawDir = join(testHome, ".openclaw");
+
+  before(async () => {
+    installerModule = await import("../src/installer.js");
+    rmSync(openClawDir, { recursive: true, force: true });
+  });
+
+  it("returns false when ~/.openclaw/ directory does not exist", async () => {
+    rmSync(openClawDir, { recursive: true, force: true });
+    const result = await installerModule.installOpenClaw();
+    assert.strictEqual(result, false);
+  });
+
+  it("returns true and skips when SKILL.md already exists", async () => {
+    const skillDir = join(openClawDir, "workspace", "skills", "clawpay");
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(join(skillDir, "SKILL.md"), "# existing skill\n", "utf-8");
+
+    const result = await installerModule.installOpenClaw();
+    assert.strictEqual(result, true);
+    rmSync(openClawDir, { recursive: true, force: true });
+  });
+
+  it("returns true and creates SKILL.md when ~/.openclaw/ exists but SKILL.md does not", async () => {
+    mkdirSync(openClawDir, { recursive: true });
+
+    const result = await installerModule.installOpenClaw();
+    const skillFile = join(openClawDir, "workspace", "skills", "clawpay", "SKILL.md");
+    assert.strictEqual(result, true);
+    assert.ok(existsSync(skillFile), "SKILL.md should have been created");
+    rmSync(openClawDir, { recursive: true, force: true });
   });
 });
