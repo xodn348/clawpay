@@ -7,7 +7,7 @@
 
 # ClawPay
 
-Open-source Stripe MCP Server for AI Agents. Let Claude, OpenCode, and any MCP client make payments.
+Open-source payment MCP server for AI agents. Works with Claude Code, OpenClaw, OpenCode, Claude Desktop, Cursor, and any MCP client.
 
 > [!WARNING]
 > ClawPay enables AI agents to make real financial transactions. Real money is involved.
@@ -29,9 +29,8 @@ clawpay install
 `clawpay install` handles the full setup automatically:
 
 1. Prompts for your Stripe secret key
-2. Detects OpenCode, Claude Desktop, and Cursor on your machine
-3. Patches their MCP config files to register ClawPay
-4. Confirms the connection
+2. Detects **Claude Code, OpenClaw**, OpenCode, Claude Desktop, and Cursor on your machine
+3. Configures them automatically
 
 Once installed, open your AI assistant and say: **"set up payment method"** to register a card through Stripe Checkout. Then (optional) say **"set up PayPal"** to link your PayPal account for P2P sending.
 
@@ -40,15 +39,7 @@ Once installed, open your AI assistant and say: **"set up payment method"** to r
 ## Installation
 
 ```bash
-# npm
 npm install -g @xodn348/clawpay
-
-# bun
-bun add -g @xodn348/clawpay
-
-# brew (coming soon)
-brew tap xodn348/clawpay
-brew install clawpay
 ```
 
 Node.js 18 or higher is required.
@@ -99,9 +90,88 @@ If auto-detection doesn't find your client, add ClawPay manually.
 
 Same format as Claude Desktop above.
 
+### Claude Code
+
+Run in your terminal:
+
+```bash
+claude mcp add -s user clawpay \
+  -e STRIPE_SECRET_KEY=sk_test_... \
+  -e PAYPAL_CLIENT_ID=your-paypal-client-id \
+  -e PAYPAL_CLIENT_SECRET=your-paypal-client-secret \
+  -- clawpay
+```
+
+This registers ClawPay globally across all Claude Code projects. PayPal credentials are optional.
+
+### OpenClaw
+
+Install ClawPay and mcporter (the MCP bridge):
+
+```bash
+npm install -g @xodn348/clawpay mcporter
+```
+
+Or install the skill via ClawdHub:
+
+```bash
+clawdhub install clawpay
+```
+
+OpenClaw uses ClawPay through the mcporter bridge. Set your credentials as environment variables:
+
+```bash
+export STRIPE_SECRET_KEY=sk_test_...
+export PAYPAL_CLIENT_ID=your-paypal-client-id      # optional
+export PAYPAL_CLIENT_SECRET=your-paypal-client-secret  # optional
+```
+
+Then ask OpenClaw: **"set up my payment method"** to get started.
+
 Replace `sk_test_...` with your actual Stripe secret key. Use a test key (`sk_test_`) during development and a live key (`sk_live_`) only in production.
 
 PayPal credentials are optional. Required only to use the `send_paypal` tool.
+
+---
+
+## Usage Examples
+
+Ask your AI agent naturally — ClawPay handles the rest.
+
+**Register a card**
+> "Set up my payment method"
+
+Opens Stripe Checkout in your browser. Supports card, Google Pay, Apple Pay, Alipay, and more. Credentials are stored locally in `~/.clawpay/config.json`.
+
+**Make a payment**
+> "Pay $25 for the monthly subscription"
+
+Charges the registered payment method. Amount, currency, and description are passed to Stripe automatically.
+
+**Check balance**
+> "What's my current Stripe balance?"
+
+Returns available and pending balance from your Stripe account.
+
+**View transactions**
+> "Show my last 10 transactions"
+
+Lists recent payment intents with status, amount, and description.
+
+**Issue a refund**
+> "Refund the last payment"
+
+Issues a full refund for the specified payment intent ID.
+
+**Connect PayPal**
+> "Set up my PayPal account"
+
+Links your PayPal credentials for P2P sending.
+
+**Send money via PayPal**
+> "Send $30 to friend@email.com for dinner"
+
+Sends money via PayPal Payouts to an email address or phone number.
 
 ---
 
@@ -194,6 +264,22 @@ The defaults are:
 - `allowedCurrencies`: `["usd"]`
 
 Any `pay` call that exceeds these limits is rejected before it reaches Stripe.
+
+---
+
+## Supported Payment Methods
+
+ClawPay uses Stripe's [Dynamic Payment Methods](https://dashboard.stripe.com/settings/payment_methods), which automatically shows the best payment options for each customer.
+
+| Method | Status | Notes |
+|--------|--------|-------|
+| Credit / Debit Card | ✅ Always available | All major cards |
+| Apple Pay | ✅ Default on | Safari on Apple devices |
+| Google Pay | ⚙️ Enable in Dashboard | Chrome with Google Wallet |
+| Alipay | ⚙️ Enable in Dashboard | For Alipay users |
+| Link | ⚙️ Enable in Dashboard | Stripe's one-click checkout |
+
+To enable Google Pay, Alipay, or other methods, go to [Stripe Dashboard → Payment Methods](https://dashboard.stripe.com/settings/payment_methods) and toggle them on. No code changes required.
 
 ---
 
