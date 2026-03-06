@@ -1,3 +1,27 @@
+export interface PayPalConfig {
+  clientId?: string;
+  clientSecret?: string;
+  environment: "sandbox" | "production";
+  // Access token is stored in memory only (never on disk)
+}
+
+export interface SendMoneyRequest {
+  recipientEmail?: string;
+  recipientPhone?: string;
+  amountCents: number;
+  currency: string;
+  note?: string;
+}
+
+export interface SendMoneyResult {
+  success: boolean;
+  payoutBatchId?: string;
+  amount?: number;
+  currency?: string;
+  status?: string;
+  error?: string;
+}
+
 export interface ClawPayConfig {
   stripe: {
     customerId?: string;
@@ -12,6 +36,7 @@ export interface ClawPayConfig {
     allowedCurrencies: string[];
     requireConfirmation: boolean;
   };
+  paypal?: PayPalConfig;
 }
 
 export const DEFAULT_CONFIG: ClawPayConfig = {
@@ -22,6 +47,9 @@ export const DEFAULT_CONFIG: ClawPayConfig = {
     maxDailySpendCents: 50000,
     allowedCurrencies: ["usd"],
     requireConfirmation: false,
+  },
+  paypal: {
+    environment: "sandbox" as const,
   },
 };
 

@@ -2,6 +2,7 @@
 [![Coverage: 100%](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](https://github.com/xodn348/clawpay/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Stripe](https://img.shields.io/badge/Stripe-Powered-635BFF.svg)](https://stripe.com)
+[![PayPal](https://img.shields.io/badge/PayPal-Powered-003087.svg)](https://paypal.com)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
 
 # ClawPay
@@ -32,7 +33,7 @@ clawpay install
 3. Patches their MCP config files to register ClawPay
 4. Confirms the connection
 
-Once installed, open your AI assistant and say: **"set up payment method"** to register a card through Stripe Checkout.
+Once installed, open your AI assistant and say: **"set up payment method"** to register a card through Stripe Checkout. Then (optional) say **"set up PayPal"** to link your PayPal account for P2P sending.
 
 ---
 
@@ -67,7 +68,9 @@ If auto-detection doesn't find your client, add ClawPay manually.
       "type": "local",
       "command": ["clawpay"],
       "environment": {
-        "STRIPE_SECRET_KEY": "sk_test_..."
+        "STRIPE_SECRET_KEY": "sk_test_...",
+        "PAYPAL_CLIENT_ID": "your-paypal-client-id",
+        "PAYPAL_CLIENT_SECRET": "your-paypal-client-secret"
       }
     }
   }
@@ -83,7 +86,9 @@ If auto-detection doesn't find your client, add ClawPay manually.
       "command": "clawpay",
       "args": [],
       "env": {
-        "STRIPE_SECRET_KEY": "sk_test_..."
+        "STRIPE_SECRET_KEY": "sk_test_...",
+        "PAYPAL_CLIENT_ID": "your-paypal-client-id",
+        "PAYPAL_CLIENT_SECRET": "your-paypal-client-secret"
       }
     }
   }
@@ -96,11 +101,13 @@ Same format as Claude Desktop above.
 
 Replace `sk_test_...` with your actual Stripe secret key. Use a test key (`sk_test_`) during development and a live key (`sk_live_`) only in production.
 
+PayPal credentials are optional. Required only to use the `send_paypal` tool.
+
 ---
 
 ## MCP Tools Reference
 
-ClawPay exposes five tools over the MCP stdio protocol.
+ClawPay exposes seven tools over the MCP stdio protocol.
 
 ### `setup_payment`
 
@@ -143,6 +150,26 @@ Issues a full refund for a previous payment.
 | `payment_intent_id` | string | yes | The `paymentIntentId` from a previous `pay` call |
 
 Returns a `RefundResult` with fields: `success`, `refundId`, `amount`, `status`, `error`. Partial refunds are not supported.
+
+### `setup_paypal`
+
+Links your PayPal account by saving Client ID and Client Secret to `~/.clawpay/config.json`. Set `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` environment variables, or ClawPay will read them from the config file. No parameters.
+
+### `send_paypal`
+
+Sends money via PayPal Payouts to an email address or phone number.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `recipientEmail` | string | no* | | PayPal email address of recipient |
+| `recipientPhone` | string | no* | | Phone number of recipient (E.164 format) |
+| `amount` | integer | yes | | Amount in cents (e.g., `2000` for $20.00) |
+| `currency` | string | no | `"usd"` | ISO 4217 currency code |
+| `note` | string | no | | Optional note to recipient |
+
+*One of `recipientEmail` or `recipientPhone` is required.
+
+Returns a `SendMoneyResult` with fields: `success`, `payoutBatchId`, `amount`, `currency`, `status`, `error`.
 
 ---
 
