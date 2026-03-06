@@ -1,7 +1,0 @@
-{
-  "version": 3,
-  "sources": ["../src/content/index.ts"],
-  "sourcesContent": ["console.log('Content script loaded');\n"],
-  "mappings": "mBAAA,QAAQ,IAAI,uBAAuB",
-  "names": []
-}

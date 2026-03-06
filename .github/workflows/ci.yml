@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x, 22.x]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - name: Security scan for hardcoded keys
+        run: |
+          if grep -r "sk_live_" src/ || grep -r "sk_test_" src/ || grep -r "rk_live_" src/ || grep -r "rk_test_" src/; then
+            echo "ERROR: Hardcoded Stripe keys found in source code"
+            exit 1
+          fi
+          echo "Security scan passed: no hardcoded keys detected"
