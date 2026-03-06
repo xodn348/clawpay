@@ -1,7 +1,7 @@
 [![CI](https://github.com/xodn348/clawpay/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/xodn348/clawpay/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
-[![Stripe](https://img.shields.io/badge/Stripe-Powered-635BFF.svg?logo=stripe&logoColor=white)](https://stripe.com)
-[![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
+[![Stripe](https://img.shields.io/badge/Stripe-Powered-635BFF)](https://stripe.com)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-green)](https://modelcontextprotocol.io)
 
 # ClawPay
 
@@ -11,20 +11,6 @@ Open-source Stripe MCP Server for AI Agents. Let Claude, OpenCode, and any MCP c
 > ClawPay enables AI agents to make real financial transactions. Real money is involved.
 > AI agent payments may be irreversible. You are responsible for all charges made through your Stripe account.
 > Review your guardrail limits before use. See [DISCLAIMER.md](DISCLAIMER.md) for full terms.
-
----
-
-## Security & Safety
-
-**ClawPay never sees your card data.** All card entry happens inside Stripe Checkout, which is PCI DSS compliant. ClawPay only ever stores and uses Stripe customer IDs and payment method IDs.
-
-**Built-in Guardrails.** Out of the box, ClawPay enforces a $100 per-transaction maximum, a $500 daily spend cap, and USD-only payments. All limits are configurable in `~/.clawpay/config.json`.
-
-**Full Audit Trail.** Every payment, refund, and setup event is written to `~/.clawpay/audit.log` as JSON lines. No API keys or card data are ever logged.
-
-**Automated Security.** The CI pipeline runs a hardcoded-key scan on every push. Dependabot sends weekly dependency update PRs. GitHub secret scanning is enabled on the repository.
-
-For vulnerability reports, see [SECURITY.md](SECURITY.md). For full legal terms, see [DISCLAIMER.md](DISCLAIMER.md).
 
 ---
 
@@ -200,6 +186,20 @@ Each entry contains: `timestamp` (ISO 8601), `action`, `amount`, `currency`, `st
 Pull requests are welcome. Please open an issue first for significant changes.
 
 To report a security vulnerability, follow the process in [SECURITY.md](SECURITY.md). Do not open a public issue for security bugs.
+
+---
+
+## Security & Safety
+
+**ClawPay never sees your card data.** All card entry happens inside Stripe Checkout, which is PCI DSS compliant. ClawPay only ever stores and uses Stripe customer IDs and payment method IDs.
+
+**Built-in Guardrails.** Out of the box, ClawPay enforces a $100 per-transaction maximum, a $500 daily spend cap, and USD-only payments. All limits are configurable in `~/.clawpay/config.json`.
+
+**Full Audit Trail.** Every payment, refund, and setup event is written to `~/.clawpay/audit.log` as JSON lines. No API keys or card data are ever logged.
+
+**Automated Security.** The CI pipeline runs a hardcoded-key scan on every push. Dependabot sends weekly dependency update PRs. GitHub secret scanning is enabled on the repository.
+
+For vulnerability reports, see [SECURITY.md](SECURITY.md). For full legal terms, see [DISCLAIMER.md](DISCLAIMER.md).
 
 ---
 
