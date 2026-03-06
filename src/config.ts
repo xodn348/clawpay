@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import type { ClawPayConfig, GuardrailCheck } from "./types.js";
+import type { ClawPayConfig, GuardrailCheck, PayPalConfig } from "./types.js";
 import { DEFAULT_CONFIG } from "./types.js";
 
 const CONFIG_DIR = join(homedir(), ".clawpay");
@@ -15,19 +15,37 @@ function ensureConfigDir(): void {
 
 export function loadConfig(): ClawPayConfig {
   ensureConfigDir();
+  
+  const paypalFromEnv: Partial<PayPalConfig> = {};
+  if (process.env.PAYPAL_CLIENT_ID) paypalFromEnv.clientId = process.env.PAYPAL_CLIENT_ID;
+  if (process.env.PAYPAL_CLIENT_SECRET) paypalFromEnv.clientSecret = process.env.PAYPAL_CLIENT_SECRET;
+  if (process.env.PAYPAL_ENVIRONMENT === "production") {
+    paypalFromEnv.environment = "production";
+  }
+  
   if (!existsSync(CONFIG_FILE)) {
-    return JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as ClawPayConfig;
+    const defaults = JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as ClawPayConfig;
+    if (defaults.paypal) {
+      defaults.paypal = { ...defaults.paypal, ...(paypalFromEnv as PayPalConfig) };
+    }
+    return defaults;
   }
   try {
     const raw = readFileSync(CONFIG_FILE, "utf-8");
     const saved = JSON.parse(raw) as Partial<ClawPayConfig>;
+    const paypalConfig = { ...DEFAULT_CONFIG.paypal, ...saved.paypal, ...(paypalFromEnv as PayPalConfig) };
     return {
       stripe: { ...DEFAULT_CONFIG.stripe, ...saved.stripe },
       server: { ...DEFAULT_CONFIG.server, ...saved.server },
       guardrails: { ...DEFAULT_CONFIG.guardrails, ...saved.guardrails },
+      paypal: paypalConfig,
     };
   } catch {
-    return JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as ClawPayConfig;
+    const defaults = JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as ClawPayConfig;
+    if (defaults.paypal) {
+      defaults.paypal = { ...defaults.paypal, ...(paypalFromEnv as PayPalConfig) };
+    }
+    return defaults;
   }
 }
 
@@ -39,6 +57,11 @@ export function saveConfig(config: ClawPayConfig): void {
 export function isConfigured(): boolean {
   const config = loadConfig();
   return Boolean(config.stripe.customerId && config.stripe.paymentMethodId);
+}
+
+export function isPayPalConfigured(): boolean {
+  const config = loadConfig();
+  return Boolean(config.paypal?.clientId && config.paypal?.clientSecret);
 }
 
 function todayKey(): string {
