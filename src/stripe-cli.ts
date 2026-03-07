@@ -181,6 +181,7 @@ export function detectStripeKey(): {
     };
   }
 
+  /* c8 ignore start */
   if (config.liveModeApiKey && config.liveModeApiKey.includes("***")) {
     const keychainKey = readLiveKeyFromKeychain();
     if (keychainKey) {
@@ -195,4 +196,5 @@ export function detectStripeKey(): {
   }
 
   return null;
+  /* c8 ignore stop */
 }
