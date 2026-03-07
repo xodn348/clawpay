@@ -18,10 +18,12 @@ type ConfigModule = typeof import("../src/config.js");
 type GuardrailsModule = typeof import("../src/guardrails.js");
 type PaypalModule = typeof import("../src/paypal.js");
 type InstallerModule = typeof import("../src/installer.js");
+type StripeCliModule = typeof import("../src/stripe-cli.js");
 
 let configModule: ConfigModule;
 let guardrailsModule: GuardrailsModule;
 let paypalModule: PaypalModule;
+let stripeCliModule: StripeCliModule;
 
 function collectTsFiles(dir: string): string[] {
   const files: string[] = [];
@@ -756,5 +758,301 @@ describe("installer: installOpenClaw", () => {
     assert.strictEqual(result, true);
     assert.ok(existsSync(skillFile), "SKILL.md should have been created");
     rmSync(openClawDir, { recursive: true, force: true });
+  });
+});
+
+describe("stripe-cli: parseToml", () => {
+  before(async () => {
+    stripeCliModule = await import("../src/stripe-cli.js");
+  });
+
+  it("parses [default] section with single-quoted values", () => {
+    const toml = `[default]\ndevice_name = 'MacBook-Pro'\ntest_mode_api_key = 'sk_test_abc123'\n`;
+    const result = stripeCliModule._parseToml.fn(toml);
+    assert.strictEqual(result["default"]["test_mode_api_key"], "sk_test_abc123");
+    assert.strictEqual(result["default"]["device_name"], "MacBook-Pro");
+  });
+
+  it("parses multi-profile TOML", () => {
+    const toml = `[default]\ntest_mode_api_key = 'sk_test_default'\n\n[staging]\ntest_mode_api_key = 'sk_test_staging'\n`;
+    const result = stripeCliModule._parseToml.fn(toml);
+    assert.strictEqual(result["default"]["test_mode_api_key"], "sk_test_default");
+    assert.strictEqual(result["staging"]["test_mode_api_key"], "sk_test_staging");
+  });
+
+  it("skips array values and top-level entries before any section", () => {
+    const toml = `installed_plugins = ['a', 'b']\ncolor = 'auto'\n\n[default]\ntest_mode_api_key = 'sk_test_x'\n`;
+    const result = stripeCliModule._parseToml.fn(toml);
+    assert.ok(!("installed_plugins" in (result["default"] ?? {})));
+    assert.strictEqual(result["default"]["test_mode_api_key"], "sk_test_x");
+  });
+
+  it("skips boolean values", () => {
+    const toml = `[default]\nis_valid = true\ntest_mode_api_key = 'sk_test_y'\n`;
+    const result = stripeCliModule._parseToml.fn(toml);
+    assert.ok(!("is_valid" in result["default"]));
+    assert.strictEqual(result["default"]["test_mode_api_key"], "sk_test_y");
+  });
+
+  it("returns empty object on malformed/empty content", () => {
+    assert.deepStrictEqual(stripeCliModule._parseToml.fn(""), {});
+    assert.deepStrictEqual(stripeCliModule._parseToml.fn("garbage not toml"), {});
+  });
+});
+
+describe("stripe-cli: getStripeCliConfigPath", () => {
+  it("returns XDG_CONFIG_HOME path when set", () => {
+    const savedXdg = process.env.XDG_CONFIG_HOME;
+    try {
+      process.env.XDG_CONFIG_HOME = "/custom/xdg";
+      const path = stripeCliModule.getStripeCliConfigPath();
+      assert.ok(path.includes("custom") && path.includes("stripe") && path.endsWith("config.toml"));
+    } finally {
+      if (savedXdg === undefined) delete process.env.XDG_CONFIG_HOME;
+      else process.env.XDG_CONFIG_HOME = savedXdg;
+    }
+  });
+
+  it("returns HOME-based path when XDG_CONFIG_HOME not set", () => {
+    const savedXdg = process.env.XDG_CONFIG_HOME;
+    try {
+      delete process.env.XDG_CONFIG_HOME;
+      const path = stripeCliModule.getStripeCliConfigPath();
+      assert.ok(path.includes(".config") && path.includes("stripe") && path.endsWith("config.toml"));
+    } finally {
+      if (savedXdg !== undefined) process.env.XDG_CONFIG_HOME = savedXdg;
+    }
+  });
+});
+
+describe("stripe-cli: CLI detection", () => {
+  let savedSpawnFn: typeof stripeCliModule._spawnSyncCli.fn;
+
+  before(() => {
+    savedSpawnFn = stripeCliModule._spawnSyncCli.fn;
+  });
+
+  after(() => {
+    stripeCliModule._spawnSyncCli.fn = savedSpawnFn;
+  });
+
+  it("isStripeCliInstalled returns true when stripe binary found", () => {
+    stripeCliModule._spawnSyncCli.fn = ((cmd: string) => {
+      if (cmd === "which") return { status: 0, stdout: "/usr/local/bin/stripe", stderr: "" };
+      return { status: 1, stdout: "", stderr: "" };
+    }) as typeof spawnSync;
+    assert.strictEqual(stripeCliModule.isStripeCliInstalled(), true);
+  });
+
+  it("isStripeCliInstalled returns false when stripe binary not found", () => {
+    stripeCliModule._spawnSyncCli.fn = (() => {
+      return { status: 1, stdout: "", stderr: "" };
+    }) as unknown as typeof spawnSync;
+    assert.strictEqual(stripeCliModule.isStripeCliInstalled(), false);
+  });
+
+  it("isStripeCliLoggedIn returns null when config file does not exist", () => {
+    const result = stripeCliModule.isStripeCliLoggedIn();
+    assert.strictEqual(result, null);
+  });
+
+  it("isStripeCliLoggedIn returns config when valid config.toml exists", () => {
+    const stripeDir = join(testHome, ".config", "stripe");
+    mkdirSync(stripeDir, { recursive: true });
+    const toml = `[default]\ntest_mode_api_key = 'sk_test_fromfile'\ndevice_name = 'test-machine'\ntest_mode_key_expires_at = '2099-12-31'\n`;
+    writeFileSync(join(stripeDir, "config.toml"), toml, "utf-8");
+
+    const result = stripeCliModule.isStripeCliLoggedIn();
+    assert.ok(result !== null);
+    assert.strictEqual(result.testModeApiKey, "sk_test_fromfile");
+    assert.strictEqual(result.deviceName, "test-machine");
+
+    rmSync(stripeDir, { recursive: true, force: true });
+  });
+
+  it("isStripeCliLoggedIn returns null when config.toml has no test key", () => {
+    const stripeDir = join(testHome, ".config", "stripe");
+    mkdirSync(stripeDir, { recursive: true });
+    const toml = `[default]\ndevice_name = 'no-key-machine'\n`;
+    writeFileSync(join(stripeDir, "config.toml"), toml, "utf-8");
+
+    const result = stripeCliModule.isStripeCliLoggedIn();
+    assert.strictEqual(result, null);
+
+    rmSync(stripeDir, { recursive: true, force: true });
+  });
+
+  it("isKeyExpired returns true for past date", () => {
+    assert.strictEqual(stripeCliModule.isKeyExpired("2020-01-01"), true);
+  });
+
+  it("isKeyExpired returns false for future date", () => {
+    assert.strictEqual(stripeCliModule.isKeyExpired("2099-12-31"), false);
+  });
+
+  it("isKeyExpired returns false for empty string (no expiry date)", () => {
+    assert.strictEqual(stripeCliModule.isKeyExpired(""), false);
+  });
+});
+
+describe("stripe-cli: readLiveKeyFromKeychain and detectStripeKey", () => {
+  let savedSpawnFn: typeof stripeCliModule._spawnSyncCli.fn;
+  let savedApiKey: string | undefined;
+
+  before(() => {
+    savedSpawnFn = stripeCliModule._spawnSyncCli.fn;
+    savedApiKey = process.env.STRIPE_API_KEY;
+  });
+
+  after(() => {
+    stripeCliModule._spawnSyncCli.fn = savedSpawnFn;
+    if (savedApiKey === undefined) delete process.env.STRIPE_API_KEY;
+    else process.env.STRIPE_API_KEY = savedApiKey;
+  });
+
+  it("readLiveKeyFromKeychain returns null on non-darwin platform simulation (mock security exit 1)", () => {
+    stripeCliModule._spawnSyncCli.fn = (() => {
+      return { status: 1, stdout: "", stderr: "not found" };
+    }) as unknown as typeof spawnSync;
+    const result = stripeCliModule.readLiveKeyFromKeychain();
+    assert.strictEqual(result, null);
+  });
+
+  it("readLiveKeyFromKeychain returns null when keychain returns invalid key format", () => {
+    stripeCliModule._spawnSyncCli.fn = (() => {
+      return { status: 0, stdout: "not-a-valid-key\n", stderr: "" };
+    }) as unknown as typeof spawnSync;
+    const result = stripeCliModule.readLiveKeyFromKeychain();
+    assert.strictEqual(result, null);
+  });
+
+  it("detectStripeKey returns key from STRIPE_API_KEY env var", () => {
+    process.env.STRIPE_API_KEY = "sk_test_env_override";
+    const result = stripeCliModule.detectStripeKey();
+    assert.ok(result !== null);
+    assert.strictEqual(result.key, "sk_test_env_override");
+    assert.strictEqual(result.source, "cli");
+    assert.strictEqual(result.mode, "test");
+    delete process.env.STRIPE_API_KEY;
+  });
+
+  it("detectStripeKey returns live mode for live key in env var", () => {
+    process.env.STRIPE_API_KEY = "sk_live_env_live";
+    const result = stripeCliModule.detectStripeKey();
+    assert.ok(result !== null);
+    assert.strictEqual(result.mode, "live");
+    delete process.env.STRIPE_API_KEY;
+  });
+
+  it("detectStripeKey returns null when CLI not installed", () => {
+    delete process.env.STRIPE_API_KEY;
+    stripeCliModule._spawnSyncCli.fn = (() => {
+      return { status: 1, stdout: "", stderr: "" };
+    }) as unknown as typeof spawnSync;
+    const result = stripeCliModule.detectStripeKey();
+    assert.strictEqual(result, null);
+  });
+
+  it("detectStripeKey returns key from config.toml when CLI installed and logged in", () => {
+    delete process.env.STRIPE_API_KEY;
+    stripeCliModule._spawnSyncCli.fn = ((cmd: string) => {
+      if (cmd === "which") return { status: 0, stdout: "/usr/local/bin/stripe", stderr: "" };
+      return { status: 1, stdout: "", stderr: "" };
+    }) as typeof spawnSync;
+
+    const stripeDir = join(testHome, ".config", "stripe");
+    mkdirSync(stripeDir, { recursive: true });
+    const toml = `[default]\ntest_mode_api_key = 'sk_test_fromconfig'\ntest_mode_key_expires_at = '2099-12-31'\n`;
+    writeFileSync(join(stripeDir, "config.toml"), toml, "utf-8");
+
+    const result = stripeCliModule.detectStripeKey();
+    assert.ok(result !== null);
+    assert.strictEqual(result.key, "sk_test_fromconfig");
+    assert.strictEqual(result.source, "cli");
+    assert.strictEqual(result.mode, "test");
+    assert.strictEqual(result.expiresAt, "2099-12-31");
+
+    rmSync(stripeDir, { recursive: true, force: true });
+  });
+});
+
+describe("stripe-cli: additional branch coverage", () => {
+  let savedSpawnFn: typeof stripeCliModule._spawnSyncCli.fn;
+
+  before(() => {
+    savedSpawnFn = stripeCliModule._spawnSyncCli.fn;
+  });
+
+  after(() => {
+    stripeCliModule._spawnSyncCli.fn = savedSpawnFn;
+    delete process.env.STRIPE_API_KEY;
+  });
+
+  it("isStripeCliLoggedIn returns null when config.toml has no [default] section", () => {
+    const stripeDir = join(testHome, ".config", "stripe");
+    mkdirSync(stripeDir, { recursive: true });
+    const toml = `[staging]\ntest_mode_api_key = 'sk_test_staging'\n`;
+    writeFileSync(join(stripeDir, "config.toml"), toml, "utf-8");
+
+    const result = stripeCliModule.isStripeCliLoggedIn();
+    assert.strictEqual(result, null);
+
+    rmSync(stripeDir, { recursive: true, force: true });
+  });
+
+  it("readLiveKeyFromKeychain returns null on non-darwin platform", () => {
+    const originalPlatform = process.platform;
+    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
+    try {
+      const result = stripeCliModule.readLiveKeyFromKeychain();
+      assert.strictEqual(result, null);
+    } finally {
+      Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
+    }
+  });
+
+  it("detectStripeKey returns null when CLI installed but not logged in", () => {
+    delete process.env.STRIPE_API_KEY;
+    stripeCliModule._spawnSyncCli.fn = ((cmd: string) => {
+      if (cmd === "which") return { status: 0, stdout: "/usr/local/bin/stripe", stderr: "" };
+      return { status: 1, stdout: "", stderr: "" };
+    }) as typeof spawnSync;
+
+    const result = stripeCliModule.detectStripeKey();
+    assert.strictEqual(result, null);
+  });
+
+  it("parseToml skips array value inside a section (covers array-inside-section branch)", () => {
+    const toml = `[default]\ninstalled_plugins = ['a', 'b']\ntest_mode_api_key = 'sk_test_z'\n`;
+    const result = stripeCliModule._parseToml.fn(toml);
+    assert.ok(!("installed_plugins" in result["default"]));
+    assert.strictEqual(result["default"]["test_mode_api_key"], "sk_test_z");
+  });
+
+  it("parseToml skips non-matching line inside a section (covers !kvMatch branch)", () => {
+    const toml = `[default]\nDevice_Name = 'Mac'\ntest_mode_api_key = 'sk_test_w'\n`;
+    const result = stripeCliModule._parseToml.fn(toml);
+    assert.ok(!("Device_Name" in (result["default"] ?? {})));
+    assert.strictEqual(result["default"]["test_mode_api_key"], "sk_test_w");
+  });
+
+  it("detectStripeKey warns and returns key when test key is expired", () => {
+    delete process.env.STRIPE_API_KEY;
+    stripeCliModule._spawnSyncCli.fn = ((cmd: string) => {
+      if (cmd === "which") return { status: 0, stdout: "/usr/local/bin/stripe", stderr: "" };
+      return { status: 1, stdout: "", stderr: "" };
+    }) as typeof spawnSync;
+
+    const stripeDir = join(testHome, ".config", "stripe");
+    mkdirSync(stripeDir, { recursive: true });
+    const toml = `[default]\ntest_mode_api_key = 'sk_test_expired'\ntest_mode_key_expires_at = '2020-01-01'\n`;
+    writeFileSync(join(stripeDir, "config.toml"), toml, "utf-8");
+
+    const result = stripeCliModule.detectStripeKey();
+    assert.ok(result !== null);
+    assert.strictEqual(result.key, "sk_test_expired");
+    assert.strictEqual(result.expiresAt, "2020-01-01");
+
+    rmSync(stripeDir, { recursive: true, force: true });
   });
 });
