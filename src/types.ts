@@ -96,3 +96,15 @@ export interface RefundResult {
   status?: string;
   error?: string;
 }
+
+export interface StripeCliConfig {
+  deviceName?: string;
+  displayName?: string;
+  accountId?: string;
+  testModeApiKey?: string;
+  testModePubKey?: string;
+  testModeKeyExpiresAt?: string;
+  liveModeApiKey?: string;
+  liveModePubKey?: string;
+  liveModeKeyExpiresAt?: string;
+}

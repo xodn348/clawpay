@@ -257,15 +257,15 @@ export async function runInstall(): Promise<void> {
     "Enter your Stripe Secret Key (sk_test_... or sk_live_...): "
   );
 
-  if (!stripeKey.startsWith("sk_test_") && !stripeKey.startsWith("sk_live_")) {
+  if (!/^(sk|rk)_(test|live)_\S{6,}$/.test(stripeKey)) {
     console.error(
-      "Error: Invalid Stripe key. Must start with sk_test_ or sk_live_."
+      "Error: Invalid Stripe key. Must start with sk_test_, sk_live_, rk_test_, or rk_live_."
     );
     process.exit(1);
   }
 
   // Never log the full key — show a masked version only
-  const maskedKey = `sk_...${stripeKey.slice(-4)}`;
+  const maskedKey = `${stripeKey.slice(0, stripeKey.indexOf("_", 3) + 1)}...${stripeKey.slice(-4)}`;
   console.log(`\nConfiguring MCP clients with key ${maskedKey}...`);
 
   let paypalClientId: string | undefined;
