@@ -28,7 +28,7 @@ npm install -g @xodn348/clawpay         # install ClawPay
 clawpay install                         # auto-detects your Stripe key
 ```
 
-No Stripe CLI? No problem — `clawpay install` will open the [Stripe Dashboard](https://dashboard.stripe.com/apikeys) so you can paste your key manually.
+Stripe CLI can also be installed via [direct download](https://github.com/stripe/stripe-cli/releases). No Stripe CLI? No problem — `clawpay install` will open the [Stripe Dashboard](https://dashboard.stripe.com/apikeys) so you can paste your key manually.
 
 Auto-detects and configures **Claude Code, OpenClaw**, OpenCode, Claude Desktop, and Cursor. OpenClaw users: also run `npm install -g mcporter`.
 
