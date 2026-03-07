@@ -21,10 +21,38 @@ Open-source payment MCP server for AI agents. Works with Claude Code, OpenClaw, 
 
 ## Quick Start
 
+### Option A — With Stripe CLI (Recommended)
+
+Install Stripe CLI (if not already installed):
+
+```bash
+brew install stripe/stripe-cli/stripe
+# or: npm install -g @stripe/stripe-cli
+```
+
+Login to Stripe:
+
+```bash
+stripe login
+```
+
+Install and configure ClawPay (auto-detects your Stripe key):
+
 ```bash
 npm install -g @xodn348/clawpay
 clawpay install
 ```
+
+### Option B — Without Stripe CLI
+
+```bash
+npm install -g @xodn348/clawpay
+clawpay install
+```
+
+You'll be prompted to enter your Stripe Secret Key manually. Open [Stripe Dashboard → API Keys](https://dashboard.stripe.com/apikeys) to find it.
+
+---
 
 Auto-detects and configures **Claude Code, OpenClaw**, OpenCode, Claude Desktop, and Cursor.
 
@@ -36,11 +64,9 @@ Once installed, ask your AI: **"set up payment method"**
 
 ## Installation
 
-```bash
-npm install -g @xodn348/clawpay
-```
-
 Node.js 18 or higher is required.
+
+For the quickest setup, use **Option A** above with Stripe CLI. For manual configuration, see the [Manual Configuration](#manual-configuration) section below.
 
 ---
 
