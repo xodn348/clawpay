@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { spawnSync } from "node:child_process";
+import { detectStripeKey } from "./stripe-cli.js";
 
 export const _spawnSync: { fn: typeof spawnSync } = { fn: spawnSync };
 
@@ -253,20 +254,43 @@ export async function installOpenClaw(): Promise<boolean> {
 
 /* c8 ignore start */
 export async function runInstall(): Promise<void> {
-  const stripeKey = await askQuestion(
-    "Enter your Stripe Secret Key (sk_test_... or sk_live_...): "
-  );
+  // Step 1: Try Stripe CLI auto-detection
+  const detected = detectStripeKey();
+  let stripeKey: string;
 
-  if (!/^(sk|rk)_(test|live)_\S{6,}$/.test(stripeKey)) {
-    console.error(
-      "Error: Invalid Stripe key. Must start with sk_test_, sk_live_, rk_test_, or rk_live_."
+  if (detected) {
+    const maskedKey = `${detected.key.slice(0, detected.key.indexOf("_", 3) + 1)}...${detected.key.slice(-4)}`;
+    console.log(`\n✓ Detected Stripe ${detected.mode} key from Stripe CLI ${maskedKey}`);
+    if (detected.expiresAt) {
+      console.log(`  (expires: ${detected.expiresAt})`);
+    }
+    stripeKey = detected.key;
+  } else {
+    // Step 2: Manual fallback — open Dashboard and prompt
+    console.log("\nStripe CLI not detected or not logged in.");
+    console.log("Opening Stripe Dashboard API Keys page...");
+    // Open browser (same platform-detection approach as used elsewhere in the project)
+    const platform = process.platform;
+    const openCmd = platform === "win32" ? "start" : platform === "darwin" ? "open" : "xdg-open";
+    _spawnSync.fn(openCmd, ["https://dashboard.stripe.com/apikeys"], {});
+
+    stripeKey = await askQuestion(
+      "\nEnter your Stripe Secret Key (sk_test_, sk_live_, rk_test_, or rk_live_): "
     );
-    process.exit(1);
+
+    if (!/^(sk|rk)_(test|live)_\S{6,}$/.test(stripeKey)) {
+      console.error(
+        "Error: Invalid Stripe key. Must start with sk_test_, sk_live_, rk_test_, or rk_live_."
+      );
+      process.exit(1);
+    }
+
+    const maskedKey = `${stripeKey.slice(0, stripeKey.indexOf("_", 3) + 1)}...${stripeKey.slice(-4)}`;
+    console.log(`\nConfiguring MCP clients with key ${maskedKey}...`);
   }
 
   // Never log the full key — show a masked version only
   const maskedKey = `${stripeKey.slice(0, stripeKey.indexOf("_", 3) + 1)}...${stripeKey.slice(-4)}`;
-  console.log(`\nConfiguring MCP clients with key ${maskedKey}...`);
 
   let paypalClientId: string | undefined;
   let paypalClientSecret: string | undefined;
