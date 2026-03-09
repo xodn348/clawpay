@@ -1,7 +1,7 @@
 {
   "name": "@xodn348/clawpay",
-  "version": "0.5.0",
-  "description": "Open-source Stripe, PayPal, and AI Shopping Agent MCP Server for AI agents",
+  "version": "0.6.0",
+  "description": "Open-source AI Shopping Agent — AI buys products online using Lithic virtual cards via MCP",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
@@ -23,15 +23,15 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "stripe",
-    "paypal",
-    "mcp",
-    "ai",
-    "payment",
-    "lithic",
     "shopping",
+    "lithic",
     "virtual-card",
-    "playwright"
+    "ai",
+    "playwright",
+    "mcp",
+    "payment",
+    "stripe",
+    "paypal"
   ],
   "author": "ClawPay Contributors",
   "license": "Apache-2.0",

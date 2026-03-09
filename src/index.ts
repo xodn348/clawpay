@@ -103,8 +103,8 @@ async function runInstallerAction(action: InstallerAction): Promise<void> {
 }
 
 async function runServer(): Promise<void> {
-  if (!process.env["STRIPE_SECRET_KEY"] && !process.env["LITHIC_API_KEY"]) {
-    console.error("At least one of STRIPE_SECRET_KEY or LITHIC_API_KEY environment variable is required.");
+  if (!process.env["LITHIC_API_KEY"] && !process.env["STRIPE_SECRET_KEY"]) {
+    console.error("LITHIC_API_KEY is required for shopping. STRIPE_SECRET_KEY is optional for merchant features.");
     process.exit(1);
   }
 
@@ -115,6 +115,28 @@ async function runServer(): Promise<void> {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: [
+      {
+        name: "setup_lithic",
+        description: "Set up Lithic virtual card API for AI shopping. Reads LITHIC_API_KEY from environment.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+      {
+        name: "browse_and_buy",
+        description: "Browse an online store, add items to cart, and complete purchase using a Lithic virtual card. Requires Playwright installed.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            store_url: { type: "string", description: "URL of the store (currently supports automationexercise.com)" },
+            product_query: { type: "string", description: "Product to search for and buy" },
+          },
+          required: ["store_url", "product_query"],
+          additionalProperties: false,
+        },
+      },
       {
         name: "setup_payment",
         description: "Set up Stripe payment method for ClawPay.",
@@ -198,28 +220,6 @@ async function runServer(): Promise<void> {
           additionalProperties: false,
         },
       },
-      {
-        name: "setup_lithic",
-        description: "Set up Lithic virtual card API for AI shopping. Reads LITHIC_API_KEY from environment.",
-        inputSchema: {
-          type: "object",
-          properties: {},
-          additionalProperties: false,
-        },
-      },
-      {
-        name: "browse_and_buy",
-        description: "Browse an online store, add items to cart, and complete purchase using a Lithic virtual card. Requires Playwright installed.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            store_url: { type: "string", description: "URL of the store (currently supports automationexercise.com)" },
-            product_query: { type: "string", description: "Product to search for and buy" },
-          },
-          required: ["store_url", "product_query"],
-          additionalProperties: false,
-        },
-      },
     ],
   }));
 
@@ -228,84 +228,6 @@ async function runServer(): Promise<void> {
     const args = asObject(request.params.arguments);
 
     switch (name) {
-      case "setup_payment": {
-        try {
-          const runSetup = await getRunSetup();
-          const result = await runSetup();
-          return successResult({ result, configured: isConfigured() });
-        } catch (error) {
-          return errorResult(error);
-        }
-      }
-
-      case "pay": {
-        try {
-          const amount = requireNumber(args["amount"], "amount");
-          const currency = requireString(args["currency"], "currency");
-          const description = requireString(args["description"], "description");
-          const result = await createPayment({ amount, currency, description });
-          return successResult(result);
-        } catch (error) {
-          return errorResult(error);
-        }
-      }
-
-      case "get_balance": {
-        try {
-          const result = await getBalance();
-          return successResult(result);
-        } catch (error) {
-          return errorResult(error);
-        }
-      }
-
-      case "list_transactions": {
-        try {
-          const limit = optionalPositiveInt(args["limit"], "limit");
-          const result = await listTransactions(limit);
-          return successResult(result);
-        } catch (error) {
-          return errorResult(error);
-        }
-      }
-
-      case "refund": {
-        try {
-          const paymentIntentId = requireString(args["payment_intent_id"], "payment_intent_id");
-          const result = await refundPayment(paymentIntentId);
-          return successResult(result);
-        } catch (error) {
-          return errorResult(error);
-        }
-      }
-
-      case "setup_paypal": {
-        try {
-          const runPayPalSetup = await getRunPayPalSetup();
-          const result = await runPayPalSetup();
-          return successResult(result);
-        } catch (error) {
-          return errorResult(error);
-        }
-      }
-
-      case "send_paypal": {
-        try {
-          const recipientEmail = typeof args["recipientEmail"] === "string" ? args["recipientEmail"] : undefined;
-          const recipientPhone = typeof args["recipientPhone"] === "string" ? args["recipientPhone"] : undefined;
-          if (!recipientEmail && !recipientPhone) {
-            return errorResult(new Error("Either recipientEmail or recipientPhone is required."));
-          }
-          const amount = requireNumber(args["amount"], "amount");
-          const currency = typeof args["currency"] === "string" ? args["currency"] : "usd";
-          const note = typeof args["note"] === "string" ? args["note"] : undefined;
-          const result = await sendMoney({ recipientEmail, recipientPhone, amountCents: amount, currency, note });
-          return successResult(result);
-        } catch (error) {
-          return errorResult(error);
-        }
-      }
-
       case "setup_lithic": {
         try {
           const runLithicSetup = await getRunLithicSetup();
@@ -385,6 +307,84 @@ async function runServer(): Promise<void> {
             // Always close the card
             await closeCard(card.token).catch(() => {});
           }
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "setup_payment": {
+        try {
+          const runSetup = await getRunSetup();
+          const result = await runSetup();
+          return successResult({ result, configured: isConfigured() });
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "pay": {
+        try {
+          const amount = requireNumber(args["amount"], "amount");
+          const currency = requireString(args["currency"], "currency");
+          const description = requireString(args["description"], "description");
+          const result = await createPayment({ amount, currency, description });
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "get_balance": {
+        try {
+          const result = await getBalance();
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "list_transactions": {
+        try {
+          const limit = optionalPositiveInt(args["limit"], "limit");
+          const result = await listTransactions(limit);
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "refund": {
+        try {
+          const paymentIntentId = requireString(args["payment_intent_id"], "payment_intent_id");
+          const result = await refundPayment(paymentIntentId);
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "setup_paypal": {
+        try {
+          const runPayPalSetup = await getRunPayPalSetup();
+          const result = await runPayPalSetup();
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "send_paypal": {
+        try {
+          const recipientEmail = typeof args["recipientEmail"] === "string" ? args["recipientEmail"] : undefined;
+          const recipientPhone = typeof args["recipientPhone"] === "string" ? args["recipientPhone"] : undefined;
+          if (!recipientEmail && !recipientPhone) {
+            return errorResult(new Error("Either recipientEmail or recipientPhone is required."));
+          }
+          const amount = requireNumber(args["amount"], "amount");
+          const currency = typeof args["currency"] === "string" ? args["currency"] : "usd";
+          const note = typeof args["note"] === "string" ? args["note"] : undefined;
+          const result = await sendMoney({ recipientEmail, recipientPhone, amountCents: amount, currency, note });
+          return successResult(result);
         } catch (error) {
           return errorResult(error);
         }
