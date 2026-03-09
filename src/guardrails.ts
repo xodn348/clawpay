@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 const AUDIT_DIR = join(homedir(), ".clawpay");
 const AUDIT_FILE = join(AUDIT_DIR, "audit.log");
 
-type AuditAction = "pay" | "refund" | "balance" | "list_transactions" | "setup_payment" | "paypal_send" | "setup_paypal";
+type AuditAction = "pay" | "refund" | "balance" | "list_transactions" | "setup_payment" | "paypal_send" | "setup_paypal" | "browse_and_buy" | "setup_lithic";
 
 interface AuditEntry {
   timestamp: string;
@@ -16,7 +16,9 @@ interface AuditEntry {
   refundId?: string;
   payoutBatchId?: string;
   recipientMasked?: string;
-  status: "success" | "failed" | "blocked";
+  storeUrl?: string;
+  orderId?: string;
+  status: "success" | "failed" | "blocked" | "cancelled";
   reason?: string;
 }
 
@@ -113,6 +115,36 @@ export function auditPayPalSetup(status: "success" | "failed", reason?: string):
   auditLog({
     timestamp: new Date().toISOString(),
     action: "setup_paypal",
+    status,
+    reason,
+  });
+}
+
+export function auditShopping(opts: {
+  amount?: number;
+  currency?: string;
+  productName?: string;
+  storeUrl?: string;
+  orderId?: string;
+  status: "success" | "failed" | "blocked" | "cancelled";
+  reason?: string;
+}): void {
+  auditLog({
+    timestamp: new Date().toISOString(),
+    action: "browse_and_buy",
+    amount: opts.amount,
+    currency: opts.currency,
+    storeUrl: opts.storeUrl,
+    orderId: opts.orderId,
+    status: opts.status,
+    reason: opts.reason,
+  });
+}
+
+export function auditLithicSetup(status: "success" | "failed", reason?: string): void {
+  auditLog({
+    timestamp: new Date().toISOString(),
+    action: "setup_lithic",
     status,
     reason,
   });
