@@ -33,15 +33,44 @@ You are solely responsible for implementing appropriate guardrails, spending lim
 
 ## 3. PCI DSS Statement
 
-ClawPay never processes, stores, or transmits raw cardholder data (PANs, CVVs). All card input is handled exclusively by Stripe's PCI-compliant Checkout. ClawPay is not in PCI scope.
+### Stripe Payment Processing
+
+ClawPay never processes, stores, or transmits raw cardholder data (PANs, CVVs) when using Stripe payment processing. All card input is handled exclusively by Stripe's PCI-compliant Checkout. ClawPay is not in PCI scope for Stripe transactions.
 
 ClawPay integrates with Stripe's hosted payment pages and tokenization infrastructure. Raw card numbers, CVV codes, expiration dates, and other sensitive authentication data never pass through ClawPay's codebase, servers, or logs. Stripe holds PCI DSS Level 1 certification, the highest level of compliance available.
 
-This architecture means ClawPay itself does not fall within the scope of PCI DSS requirements. However, your overall payment system may still have PCI obligations depending on how you deploy and integrate ClawPay. Consult a Qualified Security Assessor (QSA) if you have questions about your specific compliance posture.
+### Shopping Feature (Automated Checkout)
+
+When using the shopping feature to automate checkout on merchant websites, ClawPay briefly holds the PAN (Primary Account Number) and CVV in process memory to fill merchant checkout forms. This is a temporary, in-memory operation only:
+
+- **PAN/CVV is never written to disk** — it exists only in RAM during the checkout automation
+- **PAN/CVV is never logged or included in audit entries** — the audit log records only transaction metadata, not card details
+- **PAN/CVV is never sent to any ClawPay server** — ClawPay has no servers; all processing is local
+- **PAN/CVV is obtained from the Lithic API** and used solely to fill merchant checkout forms via an automated browser
+- **After checkout completes, the virtual card is immediately closed** — each shopping transaction uses a single-use Lithic virtual card
+- **The card is a Lithic-issued virtual card**, not a real credit or debit card — it is a temporary payment instrument issued by Lithic for this specific transaction
+
+### Compliance Summary
+
+For Stripe payment processing, ClawPay does not fall within the scope of PCI DSS requirements. For shopping feature usage, the brief in-memory handling of PAN/CVV is a necessary part of automated checkout automation and does not involve storage, transmission to external servers, or logging. However, your overall payment system may still have PCI obligations depending on how you deploy and integrate ClawPay. Consult a Qualified Security Assessor (QSA) if you have questions about your specific compliance posture.
 
 ---
 
-## 4. Not a Money Transmitter
+## 4. Automated Purchasing Disclaimer
+
+The shopping feature in ClawPay automates the checkout process on merchant websites. Automated purchasing may violate the Terms of Service of some online stores. You are solely responsible for ensuring that your use of ClawPay's shopping feature complies with the Terms of Service of each merchant website where you use it.
+
+ClawPay is a tool that executes purchasing instructions. It does not make purchasing decisions on your behalf. You must explicitly confirm every purchase before it is executed. ClawPay will not proceed with any transaction without your direct authorization.
+
+---
+
+## 5. Sandbox Mode Notice
+
+ClawPay v0.5 operates in Lithic sandbox mode. No real money is spent when using the shopping feature. All transactions are simulated on Lithic's test environment. This allows you to test the shopping automation without financial risk.
+
+---
+
+## 6. Not a Money Transmitter
 
 ClawPay is a software tool that interfaces with the Stripe API. It is not a payment processor, money transmitter, or financial institution.
 
@@ -51,7 +80,7 @@ If your use of ClawPay involves activities that may require money transmission l
 
 ---
 
-## 5. Credential Security
+## 7. Credential Security
 
 You are solely responsible for securing your Stripe API keys. Never commit API keys to version control. ClawPay stores keys only in environment variables.
 
@@ -67,7 +96,7 @@ ClawPay reads API keys from environment variables at runtime and does not persis
 
 ---
 
-## 6. Limitation of Liability
+## 8. Limitation of Liability
 
 As stated in Apache License 2.0, Section 8:
 
