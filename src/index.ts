@@ -75,6 +75,15 @@ async function getRunPayPalSetup(): Promise<() => Promise<{ success: boolean; me
   return runPayPalSetup as () => Promise<{ success: boolean; message: string }>;
 }
 
+async function getRunLithicSetup(): Promise<() => Promise<{ success: boolean; message: string }>> {
+  const setupModule = (await import("./setup-lithic.js")) as JsonObject;
+  const runLithicSetup = setupModule["runLithicSetup"];
+  if (typeof runLithicSetup !== "function") {
+    throw new Error("setup_lithic is not available: runLithicSetup() is not implemented in ./setup-lithic.js.");
+  }
+  return runLithicSetup as () => Promise<{ success: boolean; message: string }>;
+}
+
 async function runInstallerAction(action: InstallerAction): Promise<void> {
   const installerModule = (await import("./installer.js")) as JsonObject;
   const candidates =
@@ -94,8 +103,8 @@ async function runInstallerAction(action: InstallerAction): Promise<void> {
 }
 
 async function runServer(): Promise<void> {
-  if (!process.env["STRIPE_SECRET_KEY"]) {
-    console.error("STRIPE_SECRET_KEY environment variable is required to run the MCP server.");
+  if (!process.env["STRIPE_SECRET_KEY"] && !process.env["LITHIC_API_KEY"]) {
+    console.error("At least one of STRIPE_SECRET_KEY or LITHIC_API_KEY environment variable is required.");
     process.exit(1);
   }
 
@@ -189,6 +198,28 @@ async function runServer(): Promise<void> {
           additionalProperties: false,
         },
       },
+      {
+        name: "setup_lithic",
+        description: "Set up Lithic virtual card API for AI shopping. Reads LITHIC_API_KEY from environment.",
+        inputSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+      },
+      {
+        name: "browse_and_buy",
+        description: "Browse an online store, add items to cart, and complete purchase using a Lithic virtual card. Requires Playwright installed.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            store_url: { type: "string", description: "URL of the store (currently supports automationexercise.com)" },
+            product_query: { type: "string", description: "Product to search for and buy" },
+          },
+          required: ["store_url", "product_query"],
+          additionalProperties: false,
+        },
+      },
     ],
   }));
 
@@ -270,6 +301,90 @@ async function runServer(): Promise<void> {
           const note = typeof args["note"] === "string" ? args["note"] : undefined;
           const result = await sendMoney({ recipientEmail, recipientPhone, amountCents: amount, currency, note });
           return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "setup_lithic": {
+        try {
+          const runLithicSetup = await getRunLithicSetup();
+          const result = await runLithicSetup();
+          return successResult(result);
+        } catch (error) {
+          return errorResult(error);
+        }
+      }
+
+      case "browse_and_buy": {
+        try {
+          const { isLithicConfigured } = await import("./config.js");
+          if (!isLithicConfigured()) {
+            return errorResult(new Error("Lithic not configured. Run setup_lithic first."));
+          }
+          const storeUrl = requireString(args["store_url"], "store_url");
+          const productQuery = requireString(args["product_query"], "product_query");
+
+          const { createSingleUseCard, getCardDetails, closeCard } = await import("./lithic.js");
+          const { browseAndBuy } = await import("./shopping.js");
+
+          // Create card (guardrails check happens inside createSingleUseCard)
+          const SHOPPING_SPEND_LIMIT_CENTS = 10000;
+          const card = await createSingleUseCard(SHOPPING_SPEND_LIMIT_CENTS);
+          let cardDetails: Awaited<ReturnType<typeof getCardDetails>> | undefined;
+
+          try {
+            cardDetails = await getCardDetails(card.token);
+
+            const result = await browseAndBuy({
+              storeUrl,
+              productQuery,
+              cardDetails: {
+                pan: cardDetails.pan,
+                cvv: cardDetails.cvv,
+                expMonth: cardDetails.expMonth,
+                expYear: cardDetails.expYear,
+              },
+              onConfirmation: async (summary: string) => {
+                try {
+                  const elicitResult = await server.elicitInput({
+                    message: summary,
+                    requestedSchema: {
+                      type: "object" as const,
+                      properties: {
+                        confirm: {
+                          type: "boolean" as const,
+                          title: "Confirm Purchase",
+                          description: "Do you want to proceed with this purchase?",
+                        },
+                      },
+                      required: ["confirm"],
+                    },
+                  });
+                  if (elicitResult.action === "accept" && elicitResult.content?.confirm === true) {
+                    return true;
+                  }
+                  return false;
+                } catch {
+                  // Client doesn't support elicitation — abort for safety
+                  return false;
+                }
+              },
+            });
+
+            // Don't include PAN/CVV in result
+            return successResult({
+              success: result.success,
+              orderId: result.orderId,
+              totalCents: result.totalCents,
+              productName: result.productName,
+              message: result.message,
+              cancelled: result.cancelled,
+            });
+          } finally {
+            // Always close the card
+            await closeCard(card.token).catch(() => {});
+          }
         } catch (error) {
           return errorResult(error);
         }
