@@ -3,6 +3,7 @@
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![Stripe](https://img.shields.io/badge/Stripe-Powered-635BFF.svg)](https://stripe.com)
 [![PayPal](https://img.shields.io/badge/PayPal-Powered-003087.svg)](https://paypal.com)
+[![Lithic](https://img.shields.io/badge/Lithic-Virtual_Cards-000.svg)](https://lithic.com)
 [![MCP](https://img.shields.io/badge/MCP-Compatible-green.svg)](https://modelcontextprotocol.io)
 
 # ClawPay
@@ -167,7 +168,7 @@ Sends money via PayPal Payouts to an email address or phone number.
 
 ## MCP Tools Reference
 
-ClawPay exposes seven tools over the MCP stdio protocol.
+ClawPay exposes nine tools over the MCP stdio protocol.
 
 ### `setup_payment`
 
@@ -231,6 +232,24 @@ Sends money via PayPal Payouts to an email address or phone number.
 
 Returns a `SendMoneyResult` with fields: `success`, `payoutBatchId`, `amount`, `currency`, `status`, `error`.
 
+### `setup_lithic`
+
+Set up Lithic virtual card API for AI shopping. Reads `LITHIC_API_KEY` from the environment and saves the configuration to `~/.clawpay/config.json`. No parameters.
+
+### `browse_and_buy`
+
+Launches a Playwright browser, navigates to the specified store, finds the product, and completes checkout using a Lithic single-use virtual card. Asks for confirmation before charging.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `store_url` | string | yes | URL of the online store (currently: automationexercise.com) |
+| `product_query` | string | yes | Product to search for and buy |
+
+Returns a `ShoppingResult` with fields: `success`, `orderId`, `totalCents`, `productName`, `message`, `cancelled`.
+
+> [!NOTE]
+> `browse_and_buy` is sandbox mode only in v0.5. No real purchases are made.
+
 ---
 
 ## Guardrails Configuration
@@ -288,6 +307,55 @@ Each entry contains: `timestamp` (ISO 8601), `action`, `amount`, `currency`, `st
 
 ---
 
+## AI Shopping Agent
+
+> [!NOTE]
+> **v0.5 is sandbox mode only.** No real purchases are made. All transactions run against Lithic's sandbox environment.
+
+ClawPay's AI Shopping Agent lets you buy products from online stores using plain English. The agent browses the store, fills the cart, shows you a summary, asks for your confirmation, then pays using a Lithic single-use virtual card.
+
+**Example prompt:**
+> "Buy me a blue t-shirt on automationexercise.com"
+
+The agent will find the product, add it to the cart, show you the total, and wait for your approval before charging anything.
+
+### How it works
+
+1. You describe what you want to buy and where.
+2. ClawPay launches a Playwright browser and navigates to the store.
+3. It searches for your product, selects it, and proceeds to checkout.
+4. You see a summary: product name, price, and store.
+5. You confirm or cancel.
+6. On confirmation, ClawPay generates a Lithic single-use virtual card and completes the purchase.
+
+### Supported stores
+
+| Store | Mode |
+|-------|------|
+| automationexercise.com | Sandbox only |
+
+### Requirements
+
+- [Playwright](https://playwright.dev) with Chromium
+
+Install Playwright and its browser:
+
+```bash
+npm install -g playwright
+npx playwright install chromium
+```
+
+### Quick setup
+
+```bash
+export LITHIC_API_KEY=your_sandbox_key
+clawpay install
+```
+
+Then ask your AI: **"Buy me a blue t-shirt on automationexercise.com"**
+
+---
+
 ## Contributing
 
 Pull requests are welcome. Please open an issue first for significant changes.
@@ -299,6 +367,8 @@ To report a security vulnerability, follow the process in [SECURITY.md](SECURITY
 ## Security & Safety
 
 **ClawPay never sees your card data.** All card entry happens inside Stripe Checkout, which is PCI DSS compliant. ClawPay only ever stores and uses Stripe customer IDs and payment method IDs.
+
+**AI Shopping Agent card data.** When `browse_and_buy` runs, Lithic generates a single-use virtual card (PAN and CVV) that exists briefly in memory to complete the checkout form. This data is never logged, never written to disk, and discarded immediately after the transaction completes.
 
 **Built-in Guardrails.** Out of the box, ClawPay enforces a $100 per-transaction maximum, a $500 daily spend cap, and USD-only payments. All limits are configurable in `~/.clawpay/config.json`.
 
