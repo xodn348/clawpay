@@ -5,6 +5,35 @@ export interface PayPalConfig {
   // Access token is stored in memory only (never on disk)
 }
 
+export interface LithicConfig {
+  apiKey?: string;
+  environment: "sandbox" | "production";
+}
+
+export interface LithicCard {
+  token: string;
+  lastFour: string;
+  state: string;
+  spendLimitCents: number;
+}
+
+export interface ShoppingRequest {
+  storeUrl: string;
+  productQuery: string;
+}
+
+export interface ShoppingResult {
+  success: boolean;
+  orderId?: string;
+  productName?: string;
+  totalCents?: number;
+  currency?: string;
+  cardToken?: string;
+  error?: string;
+  message?: string;
+  cancelled?: boolean;
+}
+
 export interface SendMoneyRequest {
   recipientEmail?: string;
   recipientPhone?: string;
@@ -37,6 +66,7 @@ export interface ClawPayConfig {
     requireConfirmation: boolean;
   };
   paypal?: PayPalConfig;
+  lithic?: LithicConfig;
 }
 
 export const DEFAULT_CONFIG: ClawPayConfig = {
@@ -49,6 +79,9 @@ export const DEFAULT_CONFIG: ClawPayConfig = {
     requireConfirmation: false,
   },
   paypal: {
+    environment: "sandbox" as const,
+  },
+  lithic: {
     environment: "sandbox" as const,
   },
 };
