@@ -299,6 +299,17 @@ export async function runInstall(): Promise<void> {
   // Never log the full key — show a masked version only
   const maskedKey = `${stripeKey.slice(0, stripeKey.indexOf("_", 3) + 1)}...${stripeKey.slice(-4)}`;
 
+  let lithicApiKey: string | undefined;
+
+  const configureLithic = await askQuestion(
+    "\nDo you want to configure Lithic (AI shopping agent)? (y/N): "
+  );
+  if (configureLithic === "y" || configureLithic === "Y") {
+    lithicApiKey = await askQuestion("Enter your Lithic API key: ");
+    const maskedLithicKey = `${lithicApiKey.slice(0, 8)}...`;
+    console.log(`  Lithic API key: ${maskedLithicKey}`);
+  }
+
   let paypalClientId: string | undefined;
   let paypalClientSecret: string | undefined;
 
@@ -312,17 +323,6 @@ export async function runInstall(): Promise<void> {
     );
     const maskedPaypalId = `${paypalClientId.slice(0, 8)}...`;
     console.log(`  PayPal Client ID: ${maskedPaypalId}`);
-  }
-
-  let lithicApiKey: string | undefined;
-
-  const configureLithic = await askQuestion(
-    "\nDo you want to configure Lithic (AI shopping agent)? (y/N): "
-  );
-  if (configureLithic === "y" || configureLithic === "Y") {
-    lithicApiKey = await askQuestion("Enter your Lithic API key: ");
-    const maskedLithicKey = `${lithicApiKey.slice(0, 8)}...`;
-    console.log(`  Lithic API key: ${maskedLithicKey}`);
   }
 
   const clients = getMcpClients();
