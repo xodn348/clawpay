@@ -64,13 +64,7 @@ ClawPay is a tool that executes purchasing instructions. It does not make purcha
 
 ---
 
-## 5. Sandbox Mode Notice
-
-ClawPay v0.5 operates in Lithic sandbox mode. No real money is spent when using the shopping feature. All transactions are simulated on Lithic's test environment. This allows you to test the shopping automation without financial risk.
-
----
-
-## 6. Not a Money Transmitter
+## 5. Not a Money Transmitter
 
 ClawPay is a software tool that interfaces with the Stripe API. It is not a payment processor, money transmitter, or financial institution.
 
@@ -96,7 +90,7 @@ ClawPay reads API keys from environment variables at runtime and does not persis
 
 ---
 
-## 8. Limitation of Liability
+## 7. Limitation of Liability
 
 As stated in Apache License 2.0, Section 8:
 
