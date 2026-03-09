@@ -96,7 +96,8 @@ function buildClawPayEntry(
   stripeKey: string,
   mcpKey: "mcp" | "mcpServers",
   paypalClientId?: string,
-  paypalClientSecret?: string
+  paypalClientSecret?: string,
+  lithicApiKey?: string
 ): Record<string, unknown> {
   if (mcpKey === "mcp") {
     const environment: Record<string, string> = {
@@ -104,6 +105,7 @@ function buildClawPayEntry(
     };
     if (paypalClientId) environment["PAYPAL_CLIENT_ID"] = paypalClientId;
     if (paypalClientSecret) environment["PAYPAL_CLIENT_SECRET"] = paypalClientSecret;
+    if (lithicApiKey) environment["LITHIC_API_KEY"] = lithicApiKey;
     return {
       clawpay: {
         type: "local",
@@ -117,6 +119,7 @@ function buildClawPayEntry(
   };
   if (paypalClientId) env["PAYPAL_CLIENT_ID"] = paypalClientId;
   if (paypalClientSecret) env["PAYPAL_CLIENT_SECRET"] = paypalClientSecret;
+  if (lithicApiKey) env["LITHIC_API_KEY"] = lithicApiKey;
   return {
     clawpay: {
       command: "clawpay",
@@ -195,7 +198,8 @@ mcporter call --stdio "clawpay" send_paypal recipientPhone=+12025551234 amount=2
 export async function installClaudeCode(
   stripeKey: string,
   paypalClientId?: string,
-  paypalClientSecret?: string
+  paypalClientSecret?: string,
+  lithicApiKey?: string
 ): Promise<boolean> {
   const whichResult = _spawnSync.fn("which", ["claude"], { encoding: "utf-8" });
   if (whichResult.status !== 0) {
@@ -212,6 +216,9 @@ export async function installClaudeCode(
   }
   if (paypalClientSecret) {
     args.push("-e", `PAYPAL_CLIENT_SECRET=${paypalClientSecret}`);
+  }
+  if (lithicApiKey) {
+    args.push("-e", `LITHIC_API_KEY=${lithicApiKey}`);
   }
   args.push("--", "clawpay");
 
@@ -307,6 +314,17 @@ export async function runInstall(): Promise<void> {
     console.log(`  PayPal Client ID: ${maskedPaypalId}`);
   }
 
+  let lithicApiKey: string | undefined;
+
+  const configureLithic = await askQuestion(
+    "\nDo you want to configure Lithic (AI shopping agent)? (y/N): "
+  );
+  if (configureLithic === "y" || configureLithic === "Y") {
+    lithicApiKey = await askQuestion("Enter your Lithic API key: ");
+    const maskedLithicKey = `${lithicApiKey.slice(0, 8)}...`;
+    console.log(`  Lithic API key: ${maskedLithicKey}`);
+  }
+
   const clients = getMcpClients();
   let configuredCount = 0;
 
@@ -331,7 +349,7 @@ export async function runInstall(): Promise<void> {
       continue;
     }
 
-    const entry = buildClawPayEntry(stripeKey, client.mcpKey, paypalClientId, paypalClientSecret);
+    const entry = buildClawPayEntry(stripeKey, client.mcpKey, paypalClientId, paypalClientSecret, lithicApiKey);
     config[client.mcpKey] = { ...mcpSection, ...entry };
 
     await fs.writeFile(
@@ -343,7 +361,7 @@ export async function runInstall(): Promise<void> {
     configuredCount++;
   }
 
-  const claudeCodeInstalled = await installClaudeCode(stripeKey, paypalClientId, paypalClientSecret);
+  const claudeCodeInstalled = await installClaudeCode(stripeKey, paypalClientId, paypalClientSecret, lithicApiKey);
   if (claudeCodeInstalled) configuredCount++;
 
   const openClawInstalled = await installOpenClaw();
@@ -357,10 +375,12 @@ export async function runInstall(): Promise<void> {
     const openCodeEnv: Record<string, string> = { STRIPE_SECRET_KEY: maskedKey };
     if (paypalClientId) openCodeEnv["PAYPAL_CLIENT_ID"] = paypalClientId;
     if (paypalClientSecret) openCodeEnv["PAYPAL_CLIENT_SECRET"] = paypalClientSecret;
+    if (lithicApiKey) openCodeEnv["LITHIC_API_KEY"] = lithicApiKey;
 
     const desktopEnv: Record<string, string> = { STRIPE_SECRET_KEY: maskedKey };
     if (paypalClientId) desktopEnv["PAYPAL_CLIENT_ID"] = paypalClientId;
     if (paypalClientSecret) desktopEnv["PAYPAL_CLIENT_SECRET"] = paypalClientSecret;
+    if (lithicApiKey) desktopEnv["LITHIC_API_KEY"] = lithicApiKey;
 
     console.log("\nOpenCode (~/.config/opencode/config.json):");
     console.log(
@@ -400,6 +420,7 @@ export async function runInstall(): Promise<void> {
     let claudeCodeCmd = `claude mcp add -s user clawpay -e STRIPE_SECRET_KEY=${maskedKey}`;
     if (paypalClientId) claudeCodeCmd += ` -e PAYPAL_CLIENT_ID=${paypalClientId}`;
     if (paypalClientSecret) claudeCodeCmd += ` -e PAYPAL_CLIENT_SECRET=${paypalClientSecret}`;
+    if (lithicApiKey) claudeCodeCmd += ` -e LITHIC_API_KEY=${lithicApiKey}`;
     claudeCodeCmd += " -- clawpay";
     console.log("\nClaude Code (run in terminal):");
     console.log(`  ${claudeCodeCmd}`);
