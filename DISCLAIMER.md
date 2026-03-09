@@ -6,7 +6,48 @@ By using ClawPay, you agree to the terms of the Apache License 2.0 and acknowled
 
 ---
 
-## 1. Financial Disclaimer
+## 1. NOT A MONEY TRANSMITTER — NO FUND ACCESS
+
+**ClawPay does not transmit money, hold funds, or act as a payment intermediary. We are a SOFTWARE TOOL ONLY.**
+
+### What ClawPay Does:
+1. **API Connector**: Interfaces with third-party payment providers (Lithic, Stripe, PayPal) using YOUR API keys
+2. **Browser Automation**: Uses Playwright to fill payment forms on merchant websites on YOUR behalf
+3. **Configuration Manager**: Stores YOUR preferences and guardrail limits locally
+
+### What ClawPay Does NOT Do:
+- ❌ Hold, custody, or store your funds
+- ❌ Transmit money between parties
+- ❌ Act as a payment processor or financial intermediary
+- ❌ Have ANY access to your money at ANY time
+- ❌ Operate servers that handle payment data
+
+### Money Flow (ClawPay is NOT in this chain):
+```
+YOU → Payment Provider (Lithic/Stripe/PayPal) → Merchant
+```
+
+ClawPay is a **local software tool** that connects APIs. All funds flow **directly** between you and the payment providers. ClawPay never touches your money.
+
+### Regulatory Status:
+As a software connector with **zero access to funds**, ClawPay is not subject to money transmitter licensing requirements under U.S. federal law or most state regulations. However, **YOU** are responsible for compliance with:
+- Your payment provider's terms of service
+- Applicable consumer protection laws  
+- Your jurisdiction's financial regulations
+- Anti-money laundering (AML) requirements if applicable
+
+### Your Responsibility:
+You use ClawPay at your own risk. We provide **NO WARRANTIES** regarding:
+- Regulatory compliance
+- Transaction success or failure
+- Merchant disputes or chargebacks
+- Payment provider account status
+
+**If you are unsure about your regulatory obligations, consult legal counsel before deploying ClawPay.**
+
+---
+
+## 2. Financial Disclaimer
 
 This software is not financial advice. Use of ClawPay may result in real monetary transactions. You assume full responsibility for all payments initiated through this software.
 

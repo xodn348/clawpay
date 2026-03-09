@@ -1,6 +1,6 @@
 {
   "name": "@xodn348/clawpay",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Open-source AI Shopping Agent — AI buys products online using Lithic virtual cards via MCP",
   "type": "module",
   "main": "dist/index.js",

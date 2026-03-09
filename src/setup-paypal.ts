@@ -31,9 +31,9 @@ export async function runPayPalSetup(): Promise<{ success: boolean; message: str
   if (credentialsFromEnv) {
     const config = loadConfig();
     const environment: "sandbox" | "production" =
-      envEnvironment === "production" ? "production" : "sandbox";
+      envEnvironment === "sandbox" ? "sandbox" : "production";
     const paypalConfig: PayPalConfig = {
-      ...(config.paypal ?? { environment: "sandbox" }),
+      ...(config.paypal ?? { environment: "production" }),
       clientId: envClientId!,
       clientSecret: envClientSecret!,
       environment,

@@ -386,6 +386,27 @@ describe("PayPal config", () => {
     assert.strictEqual(config.paypal?.environment, "production");
     delete process.env.PAYPAL_ENVIRONMENT;
   });
+
+  it("loadConfig applies PAYPAL_ENVIRONMENT=sandbox override", () => {
+    process.env.PAYPAL_ENVIRONMENT = "sandbox";
+    const config = configModule.loadConfig();
+    assert.strictEqual(config.paypal?.environment, "sandbox");
+    delete process.env.PAYPAL_ENVIRONMENT;
+  });
+
+  it("loadConfig applies LITHIC_ENVIRONMENT=sandbox override", () => {
+    process.env.LITHIC_ENVIRONMENT = "sandbox";
+    const config = configModule.loadConfig();
+    assert.strictEqual(config.lithic?.environment, "sandbox");
+    delete process.env.LITHIC_ENVIRONMENT;
+  });
+
+  it("loadConfig applies LITHIC_ENVIRONMENT=production override", () => {
+    process.env.LITHIC_ENVIRONMENT = "production";
+    const config = configModule.loadConfig();
+    assert.strictEqual(config.lithic?.environment, "production");
+    delete process.env.LITHIC_ENVIRONMENT;
+  });
 });
 
 describe("PayPal audit logging", () => {
@@ -1293,6 +1314,21 @@ describe("Setup Lithic", () => {
     const result = await setupLithicModule.runLithicSetup();
     assert.strictEqual(result.success, true);
     assert.ok(result.message.toLowerCase().includes("configured"));
+  });
+
+  it("runLithicSetup defaults to production when LITHIC_ENVIRONMENT not set", async () => {
+    delete process.env.LITHIC_ENVIRONMENT;
+    await setupLithicModule.runLithicSetup();
+    const cfg = configModule.loadConfig();
+    assert.strictEqual(cfg.lithic?.environment, "production");
+  });
+
+  it("runLithicSetup saves sandbox when LITHIC_ENVIRONMENT=sandbox", async () => {
+    process.env.LITHIC_ENVIRONMENT = "sandbox";
+    await setupLithicModule.runLithicSetup();
+    const cfg = configModule.loadConfig();
+    assert.strictEqual(cfg.lithic?.environment, "sandbox");
+    delete process.env.LITHIC_ENVIRONMENT;
   });
 
   it("runLithicSetup fails when API returns 401", async () => {

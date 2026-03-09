@@ -19,14 +19,16 @@ export function loadConfig(): ClawPayConfig {
   const paypalFromEnv: Partial<PayPalConfig> = {};
   if (process.env.PAYPAL_CLIENT_ID) paypalFromEnv.clientId = process.env.PAYPAL_CLIENT_ID;
   if (process.env.PAYPAL_CLIENT_SECRET) paypalFromEnv.clientSecret = process.env.PAYPAL_CLIENT_SECRET;
-  if (process.env.PAYPAL_ENVIRONMENT === "production") {
-    paypalFromEnv.environment = "production";
+  const paypalEnv = process.env.PAYPAL_ENVIRONMENT;
+  if (paypalEnv === "production" || paypalEnv === "sandbox") {
+    paypalFromEnv.environment = paypalEnv;
   }
   
   const lithicFromEnv: Partial<LithicConfig> = {};
   if (process.env.LITHIC_API_KEY) lithicFromEnv.apiKey = process.env.LITHIC_API_KEY;
-  if (process.env.LITHIC_ENVIRONMENT === "production") {
-    lithicFromEnv.environment = "production";
+  const lithicEnv = process.env.LITHIC_ENVIRONMENT;
+  if (lithicEnv === "production" || lithicEnv === "sandbox") {
+    lithicFromEnv.environment = lithicEnv;
   }
   
   if (!existsSync(CONFIG_FILE)) {

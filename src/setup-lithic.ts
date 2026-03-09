@@ -18,7 +18,7 @@ export async function runLithicSetup(): Promise<{ success: boolean; message: str
   }
 
   const environment: "sandbox" | "production" =
-    envEnvironment === "production" ? "production" : "sandbox";
+    envEnvironment === "sandbox" ? "sandbox" : "production";
   const baseUrl =
     environment === "production" ? "https://api.lithic.com/v1" : "https://sandbox.lithic.com/v1";
   const apiKey = envApiKey || loadConfig().lithic?.apiKey;
@@ -43,7 +43,7 @@ export async function runLithicSetup(): Promise<{ success: boolean; message: str
   if (credentialsFromEnv) {
     const config = loadConfig();
     const lithicConfig: LithicConfig = {
-      ...(config.lithic ?? { environment: "sandbox" }),
+      ...(config.lithic ?? { environment: "production" }),
       apiKey: envApiKey!,
       environment,
     };
