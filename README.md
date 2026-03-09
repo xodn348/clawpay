@@ -15,7 +15,7 @@ Open-source payment MCP server for AI agents. Works with Claude Code, OpenClaw, 
 > AI agent payments may be irreversible. You are responsible for all charges made through your Stripe account.
 > Review your guardrail limits before use. See [DISCLAIMER.md](DISCLAIMER.md) for full terms.
 
-> [!NOTE]
+> [!WARNING]
 > **ClawPay has zero contact with card data.** Card numbers, CVVs, and expiration dates never pass through ClawPay's code, memory, or logs. All card input is handled entirely by [Stripe Checkout](https://stripe.com/payments/checkout) on Stripe's PCI DSS-certified servers. ClawPay only stores Stripe-issued customer IDs and payment method IDs.
 
 ---
@@ -242,13 +242,13 @@ Launches a Playwright browser, navigates to the specified store, finds the produ
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `store_url` | string | yes | URL of the online store (currently: automationexercise.com) |
+| `store_url` | string | yes | URL of the online store |
 | `product_query` | string | yes | Product to search for and buy |
 
 Returns a `ShoppingResult` with fields: `success`, `orderId`, `totalCents`, `productName`, `message`, `cancelled`.
 
-> [!NOTE]
-> `browse_and_buy` is sandbox mode only in v0.5. No real purchases are made.
+> [!WARNING]
+> `browse_and_buy` makes real purchases using Lithic virtual cards. Review your guardrail limits before use.
 
 ---
 
@@ -309,9 +309,6 @@ Each entry contains: `timestamp` (ISO 8601), `action`, `amount`, `currency`, `st
 
 ## AI Shopping Agent
 
-> [!NOTE]
-> **v0.5 is sandbox mode only.** No real purchases are made. All transactions run against Lithic's sandbox environment.
-
 ClawPay's AI Shopping Agent lets you buy products from online stores using plain English. The agent browses the store, fills the cart, shows you a summary, asks for your confirmation, then pays using a Lithic single-use virtual card.
 
 **Example prompt:**
@@ -330,9 +327,9 @@ The agent will find the product, add it to the cart, show you the total, and wai
 
 ### Supported stores
 
-| Store | Mode |
-|-------|------|
-| automationexercise.com | Sandbox only |
+| Store | Status |
+|-------|--------|
+| automationexercise.com | Supported |
 
 ### Requirements
 
@@ -348,7 +345,7 @@ npx playwright install chromium
 ### Quick setup
 
 ```bash
-export LITHIC_API_KEY=your_sandbox_key
+export LITHIC_API_KEY=your_lithic_api_key
 clawpay install
 ```
 
