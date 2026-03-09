@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import type { ClawPayConfig, GuardrailCheck, PayPalConfig } from "./types.js";
+import type { ClawPayConfig, GuardrailCheck, PayPalConfig, LithicConfig } from "./types.js";
 import { DEFAULT_CONFIG } from "./types.js";
 
 const CONFIG_DIR = join(homedir(), ".clawpay");
@@ -23,10 +23,19 @@ export function loadConfig(): ClawPayConfig {
     paypalFromEnv.environment = "production";
   }
   
+  const lithicFromEnv: Partial<LithicConfig> = {};
+  if (process.env.LITHIC_API_KEY) lithicFromEnv.apiKey = process.env.LITHIC_API_KEY;
+  if (process.env.LITHIC_ENVIRONMENT === "production") {
+    lithicFromEnv.environment = "production";
+  }
+  
   if (!existsSync(CONFIG_FILE)) {
     const defaults = JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as ClawPayConfig;
     if (defaults.paypal) {
       defaults.paypal = { ...defaults.paypal, ...(paypalFromEnv as PayPalConfig) };
+    }
+    if (defaults.lithic) {
+      defaults.lithic = { ...defaults.lithic, ...(lithicFromEnv as LithicConfig) };
     }
     return defaults;
   }
@@ -34,16 +43,21 @@ export function loadConfig(): ClawPayConfig {
     const raw = readFileSync(CONFIG_FILE, "utf-8");
     const saved = JSON.parse(raw) as Partial<ClawPayConfig>;
     const paypalConfig = { ...DEFAULT_CONFIG.paypal, ...saved.paypal, ...(paypalFromEnv as PayPalConfig) };
+    const lithicConfig = { ...DEFAULT_CONFIG.lithic, ...saved.lithic, ...(lithicFromEnv as LithicConfig) };
     return {
       stripe: { ...DEFAULT_CONFIG.stripe, ...saved.stripe },
       server: { ...DEFAULT_CONFIG.server, ...saved.server },
       guardrails: { ...DEFAULT_CONFIG.guardrails, ...saved.guardrails },
       paypal: paypalConfig,
+      lithic: lithicConfig,
     };
   } catch {
     const defaults = JSON.parse(JSON.stringify(DEFAULT_CONFIG)) as ClawPayConfig;
     if (defaults.paypal) {
       defaults.paypal = { ...defaults.paypal, ...(paypalFromEnv as PayPalConfig) };
+    }
+    if (defaults.lithic) {
+      defaults.lithic = { ...defaults.lithic, ...(lithicFromEnv as LithicConfig) };
     }
     return defaults;
   }
@@ -62,6 +76,11 @@ export function isConfigured(): boolean {
 export function isPayPalConfigured(): boolean {
   const config = loadConfig();
   return Boolean(config.paypal?.clientId && config.paypal?.clientSecret);
+}
+
+export function isLithicConfigured(): boolean {
+  const config = loadConfig();
+  return Boolean(config.lithic?.apiKey);
 }
 
 function todayKey(): string {
