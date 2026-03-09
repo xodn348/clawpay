@@ -316,10 +316,10 @@ describe("MCP server smoke test", () => {
     assert.strictEqual(build.status, 0, `TypeScript build failed: ${build.stderr || build.stdout}`);
   });
 
-  it("MCP tools/list returns all seven tools", async () => {
+  it("MCP tools/list returns all nine tools", async () => {
     const tools = await requestToolsList();
 
-    assert.strictEqual(tools.length, 7);
+    assert.strictEqual(tools.length, 9);
     const names = tools
       .map((tool) => (typeof tool === "object" && tool !== null ? (tool as { name?: unknown }).name : undefined))
       .filter((name): name is string => typeof name === "string");
@@ -331,6 +331,8 @@ describe("MCP server smoke test", () => {
     assert.ok(names.includes("refund"));
     assert.ok(names.includes("setup_paypal"));
     assert.ok(names.includes("send_paypal"));
+    assert.ok(names.includes("setup_lithic"));
+    assert.ok(names.includes("browse_and_buy"));
   });
 });
 
@@ -1054,5 +1056,549 @@ describe("stripe-cli: additional branch coverage", () => {
     assert.strictEqual(result.expiresAt, "2020-01-01");
 
     rmSync(stripeDir, { recursive: true, force: true });
+  });
+});
+
+// ============================================================
+// Guardrails: new audit functions
+// ============================================================
+
+describe("Guardrails: auditShopping and auditLithicSetup", () => {
+  before(() => {
+    mkdirSync(clawpayDir, { recursive: true });
+  });
+
+  it("auditShopping writes browse_and_buy entry to audit log", () => {
+    const auditFile = join(clawpayDir, "audit.log");
+    const before = existsSync(auditFile) ? readFileSync(auditFile, "utf-8") : "";
+    guardrailsModule.auditShopping({ amount: 2500, currency: "usd", status: "success" });
+    const after = readFileSync(auditFile, "utf-8");
+    const newLine = after.slice(before.length).trim();
+    const entry = JSON.parse(newLine) as Record<string, unknown>;
+    assert.strictEqual(entry["action"], "browse_and_buy");
+    assert.strictEqual(entry["status"], "success");
+    assert.ok(!("pan" in entry));
+    assert.ok(!("cvv" in entry));
+  });
+
+  it("auditShopping writes cancelled status", () => {
+    const auditFile = join(clawpayDir, "audit.log");
+    const before = existsSync(auditFile) ? readFileSync(auditFile, "utf-8") : "";
+    guardrailsModule.auditShopping({ status: "cancelled", reason: "user cancelled" });
+    const after = readFileSync(auditFile, "utf-8");
+    const newLine = after.slice(before.length).trim();
+    const entry = JSON.parse(newLine) as Record<string, unknown>;
+    assert.strictEqual(entry["action"], "browse_and_buy");
+    assert.strictEqual(entry["status"], "cancelled");
+  });
+
+  it("auditLithicSetup writes setup_lithic entry to audit log", () => {
+    const auditFile = join(clawpayDir, "audit.log");
+    const before = existsSync(auditFile) ? readFileSync(auditFile, "utf-8") : "";
+    guardrailsModule.auditLithicSetup("success");
+    const after = readFileSync(auditFile, "utf-8");
+    const newLine = after.slice(before.length).trim();
+    const entry = JSON.parse(newLine) as Record<string, unknown>;
+    assert.strictEqual(entry["action"], "setup_lithic");
+    assert.strictEqual(entry["status"], "success");
+  });
+
+  it("auditLithicSetup writes failed status with reason", () => {
+    const auditFile = join(clawpayDir, "audit.log");
+    const before = existsSync(auditFile) ? readFileSync(auditFile, "utf-8") : "";
+    guardrailsModule.auditLithicSetup("failed", "connection error");
+    const after = readFileSync(auditFile, "utf-8");
+    const newLine = after.slice(before.length).trim();
+    const entry = JSON.parse(newLine) as Record<string, unknown>;
+    assert.strictEqual(entry["action"], "setup_lithic");
+    assert.strictEqual(entry["status"], "failed");
+    assert.strictEqual(entry["reason"], "connection error");
+  });
+});
+
+// ============================================================
+// Lithic API client
+// ============================================================
+
+describe("Lithic API client", () => {
+  type LithicModule = typeof import("../src/lithic.js");
+  let lithicModule: LithicModule;
+  let origFetch: typeof globalThis.fetch;
+  let mockOk = true;
+  let mockStatus = 200;
+  const mockCardBody = {
+    token: "card_tok_abc123",
+    last_four: "1234",
+    state: "OPEN",
+    spend_limit: 5000,
+    pan: "4111111111111111",
+    cvv: "321",
+    exp_month: "12",
+    exp_year: "2030",
+  };
+
+  before(async () => {
+    // Reset daily spend to avoid guardrail interference
+    const today = new Date().toISOString().slice(0, 10);
+    rmSync(join(testHome, ".clawpay", `spend-${today}.json`), { force: true });
+
+    process.env.LITHIC_API_KEY = "test_sandbox_key_xyz";
+    lithicModule = await import("../src/lithic.js");
+    lithicModule.resetLithicConfig();
+
+    origFetch = globalThis.fetch;
+    (globalThis as { fetch: unknown }).fetch = async (_url: string, _init?: RequestInit) => {
+      if (!mockOk) {
+        return { ok: false, status: mockStatus };
+      }
+      return { ok: true, status: 200, json: async () => ({ ...mockCardBody }) };
+    };
+  });
+
+  after(() => {
+    (globalThis as { fetch: typeof origFetch }).fetch = origFetch;
+    delete process.env.LITHIC_API_KEY;
+    lithicModule.resetLithicConfig();
+    mockOk = true;
+    mockStatus = 200;
+  });
+
+  it("_getLithicConfig returns config with sandbox URL by default", () => {
+    lithicModule.resetLithicConfig();
+    const cfg = lithicModule._getLithicConfig();
+    assert.strictEqual(cfg.apiKey, "test_sandbox_key_xyz");
+    assert.ok(cfg.baseUrl.includes("sandbox"));
+  });
+
+  it("_getLithicConfig caches on second call", () => {
+    const cfg1 = lithicModule._getLithicConfig();
+    const cfg2 = lithicModule._getLithicConfig();
+    assert.strictEqual(cfg1, cfg2);
+  });
+
+  it("_getLithicConfig throws when no API key configured", () => {
+    delete process.env.LITHIC_API_KEY;
+    lithicModule.resetLithicConfig();
+    assert.throws(() => lithicModule._getLithicConfig(), /LITHIC_API_KEY not configured/);
+    process.env.LITHIC_API_KEY = "test_sandbox_key_xyz";
+    lithicModule.resetLithicConfig();
+  });
+
+  it("_getLithicConfig uses production URL when environment is production", () => {
+    const config = configModule.loadConfig();
+    config.lithic = { apiKey: "prod_key", environment: "production" };
+    configModule.saveConfig(config);
+    lithicModule.resetLithicConfig();
+    const cfg = lithicModule._getLithicConfig();
+    assert.ok(cfg.baseUrl.includes("api.lithic.com"));
+    // Restore
+    const restored = configModule.loadConfig();
+    restored.lithic = { environment: "sandbox" };
+    configModule.saveConfig(restored);
+    lithicModule.resetLithicConfig();
+  });
+
+  it("createSingleUseCard succeeds and returns LithicCard without PAN/CVV", async () => {
+    const card = await lithicModule.createSingleUseCard(5000);
+    assert.strictEqual(card.token, mockCardBody.token);
+    assert.strictEqual(card.lastFour, mockCardBody.last_four);
+    assert.strictEqual(card.state, mockCardBody.state);
+    assert.ok(!("pan" in card));
+    assert.ok(!("cvv" in card));
+  });
+
+  it("createSingleUseCard is blocked by guardrails when amount exceeds limit", async () => {
+    await assert.rejects(
+      () => lithicModule.createSingleUseCard(15000),
+      /blocked/i
+    );
+  });
+
+  it("createSingleUseCard throws on Lithic API error", async () => {
+    mockOk = false;
+    mockStatus = 500;
+    await assert.rejects(
+      () => lithicModule.createSingleUseCard(1000),
+      /card creation failed/i
+    );
+    mockOk = true;
+  });
+
+  it("getCardDetails returns SensitiveCardData with accessible pan/cvv", async () => {
+    const details = await lithicModule.getCardDetails("card_tok_abc123");
+    assert.strictEqual(details.pan, mockCardBody.pan);
+    assert.strictEqual(details.cvv, mockCardBody.cvv);
+  });
+
+  it("getCardDetails toJSON redacts PAN/CVV", async () => {
+    const details = await lithicModule.getCardDetails("card_tok_abc123");
+    const serialized = JSON.stringify(details);
+    assert.ok(serialized.includes("[REDACTED]"));
+    assert.ok(!serialized.includes(mockCardBody.pan));
+    assert.ok(!serialized.includes(mockCardBody.cvv));
+  });
+
+  it("getCardDetails throws on Lithic API error", async () => {
+    mockOk = false;
+    mockStatus = 404;
+    await assert.rejects(
+      () => lithicModule.getCardDetails("bad_token"),
+      /get card details failed/i
+    );
+    mockOk = true;
+  });
+
+  it("closeCard succeeds with PATCH request", async () => {
+    await assert.doesNotReject(() => lithicModule.closeCard("card_tok_abc123"));
+  });
+
+  it("closeCard throws on Lithic API error", async () => {
+    mockOk = false;
+    mockStatus = 403;
+    await assert.rejects(
+      () => lithicModule.closeCard("card_tok_abc123"),
+      /close card failed/i
+    );
+    mockOk = true;
+  });
+});
+
+// ============================================================
+// Setup Lithic
+// ============================================================
+
+describe("Setup Lithic", () => {
+  type SetupLithicModule = typeof import("../src/setup-lithic.js");
+  let setupLithicModule: SetupLithicModule;
+  let origFetch: typeof globalThis.fetch;
+  let mockFetchOk = true;
+
+  before(async () => {
+    process.env.LITHIC_API_KEY = "sandbox_valid_key";
+    origFetch = globalThis.fetch;
+    (globalThis as { fetch: unknown }).fetch = async () => ({
+      ok: mockFetchOk,
+      status: mockFetchOk ? 200 : 401,
+    });
+    setupLithicModule = await import("../src/setup-lithic.js");
+  });
+
+  after(() => {
+    (globalThis as { fetch: typeof origFetch }).fetch = origFetch;
+    delete process.env.LITHIC_API_KEY;
+    mockFetchOk = true;
+  });
+
+  it("runLithicSetup succeeds with valid API key", async () => {
+    const result = await setupLithicModule.runLithicSetup();
+    assert.strictEqual(result.success, true);
+    assert.ok(result.message.toLowerCase().includes("configured"));
+  });
+
+  it("runLithicSetup fails when API returns 401", async () => {
+    mockFetchOk = false;
+    const result = await setupLithicModule.runLithicSetup();
+    assert.strictEqual(result.success, false);
+    assert.ok(result.message.toLowerCase().includes("failed") || result.message.toLowerCase().includes("check"));
+    mockFetchOk = true;
+  });
+
+  it("runLithicSetup fails when no API key provided", async () => {
+    delete process.env.LITHIC_API_KEY;
+    const cfg = configModule.loadConfig();
+    cfg.lithic = { environment: "sandbox" };
+    configModule.saveConfig(cfg);
+    const result = await setupLithicModule.runLithicSetup();
+    assert.strictEqual(result.success, false);
+    assert.ok(result.message.includes("LITHIC_API_KEY") || result.message.includes("not found"));
+    process.env.LITHIC_API_KEY = "sandbox_valid_key";
+  });
+});
+
+// ============================================================
+// Shopping module
+// ============================================================
+
+describe("Shopping module: browseAndBuy", () => {
+  type ShoppingModule = typeof import("../src/shopping.js");
+  let shoppingModule: ShoppingModule;
+
+  const mockPage = {
+    goto: mock.fn(async () => {}),
+    fill: mock.fn(async () => {}),
+    click: mock.fn(async () => {}),
+    check: mock.fn(async () => {}),
+    selectOption: mock.fn(async () => {}),
+    waitForURL: mock.fn(async () => {}),
+    url: mock.fn(() => "https://automationexercise.com/payment_done/ORDER_XYZ"),
+    locator: mock.fn((selector: string) => ({
+      first: () => ({
+        textContent: async () => (selector.includes("cart_total") ? "Rs. 500" : "Blue Top"),
+      }),
+      count: async () => 0,
+    })),
+  };
+
+  const mockBrowser = {
+    newContext: mock.fn(async () => ({
+      newPage: mock.fn(async () => mockPage),
+    })),
+    close: mock.fn(async () => {}),
+  };
+
+  const mockChromium = {
+    launch: mock.fn(async () => mockBrowser),
+  };
+
+  before(async () => {
+    const config = configModule.loadConfig();
+    config.guardrails.maxAmountPerTransactionCents = 100000;
+    config.guardrails.maxDailySpendCents = 1000000;
+    configModule.saveConfig(config);
+    const today = new Date().toISOString().slice(0, 10);
+    rmSync(join(testHome, ".clawpay", `spend-${today}.json`), { force: true });
+
+    shoppingModule = await import("../src/shopping.js");
+    shoppingModule._shoppingState.playwrightLoader = async () => ({
+      chromium: mockChromium as unknown as { launch: (opts: { headless: boolean }) => Promise<unknown> },
+    });
+    shoppingModule._shoppingState.inProgress = false;
+  });
+
+  after(() => {
+    shoppingModule._shoppingState.inProgress = false;
+  });
+
+  it("browseAndBuy blocks concurrent sessions", async () => {
+    shoppingModule._shoppingState.inProgress = true;
+    await assert.rejects(
+      () =>
+        shoppingModule.browseAndBuy({
+          storeUrl: "https://automationexercise.com",
+          productQuery: "blue top",
+          cardDetails: { pan: "4111111111111111", cvv: "123", expMonth: "12", expYear: "2030" },
+        }),
+      /Another shopping session/,
+    );
+    shoppingModule._shoppingState.inProgress = false;
+  });
+
+  it("browseAndBuy returns cancelled when onConfirmation returns false", async () => {
+    const result = await shoppingModule.browseAndBuy({
+      storeUrl: "https://automationexercise.com",
+      productQuery: "blue top",
+      cardDetails: { pan: "4111111111111111", cvv: "123", expMonth: "12", expYear: "2030" },
+      onConfirmation: async () => false,
+    });
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.cancelled, true);
+  });
+
+  it("browseAndBuy succeeds when onConfirmation returns true", async () => {
+    const result = await shoppingModule.browseAndBuy({
+      storeUrl: "https://automationexercise.com",
+      productQuery: "blue top",
+      cardDetails: { pan: "4111111111111111", cvv: "123", expMonth: "12", expYear: "2030" },
+      onConfirmation: async () => true,
+    });
+    assert.strictEqual(result.success, true);
+    assert.ok(result.orderId !== undefined);
+  });
+
+  it("browseAndBuy succeeds without onConfirmation callback", async () => {
+    const result = await shoppingModule.browseAndBuy({
+      storeUrl: "https://automationexercise.com",
+      productQuery: "blue top",
+      cardDetails: { pan: "4111111111111111", cvv: "123", expMonth: "12", expYear: "2030" },
+    });
+    assert.strictEqual(result.success, true);
+  });
+
+  it("browseAndBuy returns failed when playwright loader throws", async () => {
+    shoppingModule._shoppingState.playwrightLoader = async () => {
+      throw new Error("Playwright is required for shopping. Install it:\n  npm install playwright && npx playwright install chromium");
+    };
+    const result = await shoppingModule.browseAndBuy({
+      storeUrl: "https://automationexercise.com",
+      productQuery: "blue top",
+      cardDetails: { pan: "4111111111111111", cvv: "123", expMonth: "12", expYear: "2030" },
+    });
+    assert.strictEqual(result.success, false);
+    assert.ok(result.message?.includes("Playwright is required") || result.message?.includes("npm install playwright"));
+    shoppingModule._shoppingState.playwrightLoader = async () => ({
+      chromium: mockChromium as unknown as { launch: (opts: { headless: boolean }) => Promise<unknown> },
+    });
+  });
+
+  it("browseAndBuy returns failed when price cannot be parsed", async () => {
+    shoppingModule._shoppingState.playwrightLoader = async () => ({
+      chromium: {
+        launch: async () => ({
+          newContext: async () => ({
+            newPage: async () => ({
+              goto: async () => {},
+              fill: async () => {},
+              click: async () => {},
+              check: async () => {},
+              selectOption: async () => {},
+              waitForURL: async () => {},
+              url: () => "https://automationexercise.com/view_cart",
+              locator: (selector: string) => ({
+                first: () => ({
+                  textContent: async () => (selector.includes("cart_total") ? "N/A" : "Blue Top"),
+                }),
+                count: async () => 0,
+              }),
+            }),
+          }),
+          close: async () => {},
+        }),
+      } as unknown as { launch: (opts: { headless: boolean }) => Promise<unknown> },
+    });
+    shoppingModule._shoppingState.inProgress = false;
+    const result = await shoppingModule.browseAndBuy({
+      storeUrl: "https://automationexercise.com",
+      productQuery: "blue top",
+      cardDetails: { pan: "4111111111111111", cvv: "123", expMonth: "12", expYear: "2030" },
+    });
+    assert.strictEqual(result.success, false);
+    assert.ok(result.message?.includes("Unable to parse"));
+    shoppingModule._shoppingState.playwrightLoader = async () => ({
+      chromium: mockChromium as unknown as { launch: (opts: { headless: boolean }) => Promise<unknown> },
+    });
+  });
+
+  it("browseAndBuy returns orderId unknown when URL has no ID", async () => {
+    shoppingModule._shoppingState.playwrightLoader = async () => ({
+      chromium: {
+        launch: async () => ({
+          newContext: async () => ({
+            newPage: async () => ({
+              goto: async () => {},
+              fill: async () => {},
+              click: async () => {},
+              check: async () => {},
+              selectOption: async () => {},
+              waitForURL: async () => {},
+              url: () => "https://automationexercise.com/payment_done/",
+              locator: (selector: string) => ({
+                first: () => ({
+                  textContent: async () => (selector.includes("cart_total") ? "$10" : "Blue Top"),
+                }),
+                count: async () => 0,
+              }),
+            }),
+          }),
+          close: async () => {},
+        }),
+      } as unknown as { launch: (opts: { headless: boolean }) => Promise<unknown> },
+    });
+    shoppingModule._shoppingState.inProgress = false;
+    const result = await shoppingModule.browseAndBuy({
+      storeUrl: "https://automationexercise.com",
+      productQuery: "blue top",
+      cardDetails: { pan: "4111111111111111", cvv: "123", expMonth: "12", expYear: "2030" },
+      onConfirmation: async () => true,
+    });
+    assert.strictEqual(result.success, true);
+    assert.strictEqual(result.orderId, "unknown");
+    shoppingModule._shoppingState.playwrightLoader = async () => ({
+      chromium: mockChromium as unknown as { launch: (opts: { headless: boolean }) => Promise<unknown> },
+    });
+  });
+
+  it("browseAndBuy succeeds via registration path", async () => {
+    shoppingModule._shoppingState.playwrightLoader = async () => ({
+      chromium: {
+        launch: async () => ({
+          newContext: async () => ({
+            newPage: async () => ({
+              goto: async () => {},
+              fill: async () => {},
+              click: async () => {},
+              check: async () => {},
+              selectOption: async () => {},
+              waitForURL: async () => {},
+              url: () => "https://automationexercise.com/payment_done/ORDER_REG123",
+              locator: (selector: string) => ({
+                first: () => ({
+                  textContent: async () => (selector.includes("cart_total") ? "$10" : "Blue Top"),
+                }),
+                count: async () => (selector === "#id_gender1" ? 1 : 0),
+              }),
+            }),
+          }),
+          close: async () => {},
+        }),
+      } as unknown as { launch: (opts: { headless: boolean }) => Promise<unknown> },
+    });
+    shoppingModule._shoppingState.inProgress = false;
+    const result = await shoppingModule.browseAndBuy({
+      storeUrl: "https://automationexercise.com",
+      productQuery: "blue top",
+      cardDetails: { pan: "4111111111111111", cvv: "123", expMonth: "12", expYear: "2030" },
+      onConfirmation: async () => true,
+    });
+    assert.strictEqual(result.success, true);
+    shoppingModule._shoppingState.playwrightLoader = async () => ({
+      chromium: mockChromium as unknown as { launch: (opts: { headless: boolean }) => Promise<unknown> },
+    });
+  });
+});
+
+describe("Shopping module: guardrail-blocked path", () => {
+  type ShoppingModule = typeof import("../src/shopping.js");
+  let shoppingMod: ShoppingModule;
+
+  before(async () => {
+    shoppingMod = await import("../src/shopping.js");
+    const cfg = configModule.loadConfig();
+    cfg.guardrails.maxAmountPerTransactionCents = 1;
+    cfg.guardrails.maxDailySpendCents = 1000000;
+    configModule.saveConfig(cfg);
+    shoppingMod._shoppingState.inProgress = false;
+  });
+
+  after(() => {
+    const cfg = configModule.loadConfig();
+    cfg.guardrails.maxAmountPerTransactionCents = 10000;
+    cfg.guardrails.maxDailySpendCents = 50000;
+    configModule.saveConfig(cfg);
+  });
+
+  it("browseAndBuy is blocked when guardrails exceeded after confirmation", async () => {
+    shoppingMod._shoppingState.playwrightLoader = async () => ({
+      chromium: {
+        launch: async () => ({
+          newContext: async () => ({
+            newPage: async () => ({
+              goto: async () => {},
+              fill: async () => {},
+              click: async () => {},
+              check: async () => {},
+              selectOption: async () => {},
+              waitForURL: async () => {},
+              url: () => "https://automationexercise.com/view_cart",
+              locator: (selector: string) => ({
+                first: () => ({
+                  textContent: async () => (selector.includes("cart_total") ? "$10" : "Blue Top"),
+                }),
+                count: async () => 0,
+              }),
+            }),
+          }),
+          close: async () => {},
+        }),
+      } as unknown as { launch: (opts: { headless: boolean }) => Promise<unknown> },
+    });
+    shoppingMod._shoppingState.inProgress = false;
+    const result = await shoppingMod.browseAndBuy({
+      storeUrl: "https://automationexercise.com",
+      productQuery: "blue top",
+      cardDetails: { pan: "4111111111111111", cvv: "123", expMonth: "12", expYear: "2030" },
+      onConfirmation: async () => true,
+    });
+    assert.strictEqual(result.success, false);
+    assert.ok(result.message !== undefined);
   });
 });
