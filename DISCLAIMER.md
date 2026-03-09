@@ -39,7 +39,29 @@ ClawPay is a tool that executes purchasing instructions. It does not make purcha
 
 ---
 
-## 4. PCI DSS Statement
+## 4. Production Mode Disclaimer
+
+**ClawPay defaults to PRODUCTION MODE for all payment services.**
+
+- **Lithic virtual cards**: Uses production API (`https://api.lithic.com/v1`) by default. All transactions charge REAL MONEY from your Lithic account.
+- **PayPal transfers**: Uses production API (`https://api-m.paypal.com`) by default. All payouts send REAL MONEY.
+- **Stripe payments**: Uses live or test mode based on your API key (`sk_live_*` = production, `sk_test_*` = test).
+
+**To use sandbox/test mode, you MUST explicitly set environment variables:**
+- `LITHIC_ENVIRONMENT=sandbox` for Lithic test mode
+- `PAYPAL_ENVIRONMENT=sandbox` for PayPal test mode
+
+**Without these environment variables, all transactions are LIVE and IRREVERSIBLE.**
+
+Before deploying ClawPay, verify:
+1. Your API keys are correct (production vs sandbox)
+2. Your guardrail limits are appropriate ($100/transaction, $500/day by default)
+3. You understand that confirmation prompts are your ONLY protection against unintended charges
+4. You have tested the automation flow in sandbox mode before using production
+
+---
+
+## 5. PCI DSS Statement
 
 ### Shopping Feature (Automated Checkout)
 
@@ -64,19 +86,19 @@ For Stripe payment processing, ClawPay does not fall within the scope of PCI DSS
 
 ---
 
-## 5. Not a Money Transmitter
+## 6. Not a Money Transmitter
 
-ClawPay is a software tool that interfaces with the Lithic API and Stripe API. It is not a payment processor, money transmitter, or financial institution.
+ClawPay is a software tool that interfaces with the Lithic API, PayPal API, and Stripe API. It is not a payment processor, money transmitter, or financial institution.
 
-ClawPay does not hold, move, or settle funds. All payment processing, fund movement, and settlement is performed by Lithic, Inc. and Stripe, Inc. under their own licenses and regulatory authorizations. ClawPay has no money transmission license and does not operate as a financial intermediary.
+ClawPay does not hold, move, or settle funds. All payment processing, fund movement, and settlement is performed by Lithic, Inc., PayPal Holdings, Inc., and Stripe, Inc. under their own licenses and regulatory authorizations. ClawPay has no money transmission license and does not operate as a financial intermediary.
 
 If your use of ClawPay involves activities that may require money transmission licenses, payment facilitator agreements, or other financial regulatory approvals in your jurisdiction, you are responsible for obtaining those approvals independently.
 
 ---
 
-## 6. Credential Security
+## 7. Credential Security
 
-You are solely responsible for securing your API keys (Lithic, Stripe, PayPal). Never commit API keys to version control. ClawPay stores keys only in environment variables.
+You are solely responsible for securing your API keys (Lithic, Stripe, PayPal). Never commit API keys to version control. ClawPay stores keys only in environment variables or `~/.clawpay/config.json`.
 
 API keys grant the ability to initiate real financial transactions. Treat them with the same care as passwords or private keys. Specifically:
 
@@ -84,13 +106,21 @@ API keys grant the ability to initiate real financial transactions. Treat them w
 - Do not commit `.env` files or any file containing API keys to git
 - Rotate keys immediately if you suspect they have been exposed
 - Use restricted key features to limit key permissions to only what ClawPay needs
-- Audit your Lithic and Stripe Dashboards regularly for unexpected API activity
+- Audit your Lithic, Stripe, and PayPal Dashboards regularly for unexpected API activity
+- **NEVER use production API keys in test/development environments**
+- **NEVER use sandbox API keys in production environments**
 
 ClawPay reads API keys from environment variables at runtime and does not persist them to disk, logs, or any external service. However, ClawPay cannot protect keys that are mishandled outside of its own execution context. A compromised key can result in unauthorized charges, refunds, or data access on your accounts.
 
+**Environment Variable Security:**
+- Production keys should ONLY be set in production deployment environments
+- Use separate API keys for development, staging, and production
+- Consider using secret management tools (AWS Secrets Manager, HashiCorp Vault, etc.) for production deployments
+- Rotate all keys on a regular schedule (every 90 days recommended)
+
 ---
 
-## 7. Limitation of Liability
+## 8. Limitation of Liability
 
 As stated in Apache License 2.0, Section 8:
 
@@ -102,6 +132,7 @@ This limitation applies to all damages arising from use of ClawPay, including bu
 - Financial losses resulting from AI agent decisions
 - Data breaches caused by improper credential handling
 - Regulatory penalties arising from non-compliant deployments
+- Charges incurred in production mode when sandbox mode was intended
 - Any other direct or indirect financial harm
 
 The full text of the Apache License 2.0 is available in the LICENSE file at the root of this repository.

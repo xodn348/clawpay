@@ -79,10 +79,10 @@ export const DEFAULT_CONFIG: ClawPayConfig = {
     requireConfirmation: false,
   },
   paypal: {
-    environment: "sandbox" as const,
+    environment: "production" as const,
   },
   lithic: {
-    environment: "sandbox" as const,
+    environment: "production" as const,
   },
 };
 

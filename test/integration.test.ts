@@ -362,7 +362,7 @@ describe("PayPal config", () => {
 
   it("isPayPalConfigured returns false when no PayPal config", () => {
     const config = configModule.loadConfig();
-    config.paypal = { environment: "sandbox" };
+    config.paypal = { environment: "production" };
     configModule.saveConfig(config);
 
     assert.strictEqual(configModule.isPayPalConfigured(), false);
@@ -1163,11 +1163,11 @@ describe("Lithic API client", () => {
     mockStatus = 200;
   });
 
-  it("_getLithicConfig returns config with sandbox URL by default", () => {
+  it("_getLithicConfig returns config with production URL by default", () => {
     lithicModule.resetLithicConfig();
     const cfg = lithicModule._getLithicConfig();
     assert.strictEqual(cfg.apiKey, "test_sandbox_key_xyz");
-    assert.ok(cfg.baseUrl.includes("sandbox"));
+    assert.ok(cfg.baseUrl.includes("api.lithic.com"));
   });
 
   it("_getLithicConfig caches on second call", () => {
@@ -1193,7 +1193,7 @@ describe("Lithic API client", () => {
     assert.ok(cfg.baseUrl.includes("api.lithic.com"));
     // Restore
     const restored = configModule.loadConfig();
-    restored.lithic = { environment: "sandbox" };
+    restored.lithic = { environment: "production" };
     configModule.saveConfig(restored);
     lithicModule.resetLithicConfig();
   });
@@ -1306,7 +1306,7 @@ describe("Setup Lithic", () => {
   it("runLithicSetup fails when no API key provided", async () => {
     delete process.env.LITHIC_API_KEY;
     const cfg = configModule.loadConfig();
-    cfg.lithic = { environment: "sandbox" };
+    cfg.lithic = { environment: "production" };
     configModule.saveConfig(cfg);
     const result = await setupLithicModule.runLithicSetup();
     assert.strictEqual(result.success, false);

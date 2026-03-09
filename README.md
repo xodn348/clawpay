@@ -10,9 +10,16 @@
 Open-source AI Shopping Agent. Tell your AI what to buy — ClawPay handles the rest using Lithic virtual cards.
 
 > [!WARNING]
-> ClawPay makes real purchases using Lithic virtual cards. Real money is involved.
-> Every purchase requires your explicit confirmation. Review your guardrail limits before use.
-> See [DISCLAIMER.md](DISCLAIMER.md) for full terms.
+> **PRODUCTION MODE**: ClawPay uses **LIVE** Lithic virtual cards and **REAL MONEY** by default.
+> 
+> - Every purchase is a **REAL TRANSACTION** with **REAL FUNDS**
+> - Virtual cards are created on **Lithic's production environment**
+> - All purchases require **YOUR EXPLICIT CONFIRMATION**
+> - Review your guardrail limits before use: **$100/transaction, $500/day**
+> 
+> To use sandbox mode for testing, set: `LITHIC_ENVIRONMENT=sandbox`
+> 
+> See [DISCLAIMER.md](DISCLAIMER.md) for full legal terms.
 
 ---
 
@@ -21,11 +28,18 @@ Open-source AI Shopping Agent. Tell your AI what to buy — ClawPay handles the 
 ```bash
 npm install -g @xodn348/clawpay
 npm install -g playwright && npx playwright install chromium
-export LITHIC_API_KEY=your_lithic_api_key
+export LITHIC_API_KEY=your_production_api_key  # ⚠️ Production key, not sandbox
 clawpay install
 ```
 
 Then ask your AI: **"Buy me a blue t-shirt on automationexercise.com"**
+
+> [!IMPORTANT]
+> **Production API Keys Required**
+> - ClawPay defaults to **production mode** for live transactions
+> - Use your **production** `LITHIC_API_KEY` (not sandbox)
+> - Transactions will charge **real money** to your Lithic account
+> - For testing, set `LITHIC_ENVIRONMENT=sandbox` and use sandbox keys
 
 ---
 
@@ -34,8 +48,8 @@ Then ask your AI: **"Buy me a blue t-shirt on automationexercise.com"**
 1. You tell your AI what to buy and where
 2. ClawPay launches a headless browser and navigates the store
 3. It finds your product, adds it to cart, and shows you a summary
-4. You confirm or cancel
-5. ClawPay generates a Lithic single-use virtual card and completes checkout
+4. **You confirm or cancel** (required — no auto-purchase)
+5. ClawPay generates a **Lithic single-use virtual card** (production) and completes checkout
 6. The card self-destructs after the transaction
 
 The virtual card exists only for that one purchase. PAN and CVV never touch disk or logs.
@@ -44,7 +58,7 @@ The virtual card exists only for that one purchase. PAN and CVV never touch disk
 
 ## AI Shopping Agent
 
-ClawPay's AI Shopping Agent lets you buy products from online stores using plain English. The agent browses the store, fills the cart, shows you a summary, asks for your confirmation, then pays using a Lithic single-use virtual card.
+ClawPay's AI Shopping Agent lets you buy products from online stores using plain English. The agent browses the store, fills the cart, shows you a summary, asks for your confirmation, then pays using a **Lithic production virtual card**.
 
 **Example prompt:**
 > "Buy me a blue t-shirt on automationexercise.com"
@@ -57,18 +71,23 @@ The agent will find the product, add it to the cart, show you the total, and wai
 2. ClawPay launches a Playwright browser and navigates to the store.
 3. It searches for your product, selects it, and proceeds to checkout.
 4. You see a summary: product name, price, and store.
-5. You confirm or cancel.
-6. On confirmation, ClawPay generates a Lithic single-use virtual card and completes the purchase.
+5. **You confirm or cancel** (required).
+6. On confirmation, ClawPay generates a **Lithic production single-use virtual card** and completes the purchase.
 
 ### Supported stores
 
-| Store | Status |
-|-------|--------|
-| automationexercise.com | Supported |
+| Store | Status | Notes |
+|-------|--------|-------|
+| automationexercise.com | Supported | Test site for demonstrations |
+
+> [!NOTE]
+> **Store Support**: Currently optimized for automationexercise.com (test site).
+> Production support for Shopify, WooCommerce, and other platforms coming soon.
 
 ### Requirements
 
 - [Playwright](https://playwright.dev) with Chromium
+- **Lithic production API key** (or sandbox key with `LITHIC_ENVIRONMENT=sandbox`)
 
 Install Playwright and its browser:
 
@@ -81,7 +100,7 @@ npx playwright install chromium
 
 ## Guardrails Configuration
 
-Default limits are conservative. To change them, edit `~/.clawpay/config.json`:
+Default limits are conservative for production use. To change them, edit `~/.clawpay/config.json`:
 
 ```json
 {
@@ -101,6 +120,10 @@ The defaults are:
 
 Any transaction that exceeds these limits is rejected before it reaches the payment provider.
 
+> [!CAUTION]
+> **Production Guardrails**: These limits apply to **REAL MONEY** transactions.
+> Set conservative limits until you're confident in the automation.
+
 ---
 
 ## Additional Features
@@ -118,6 +141,9 @@ If you run a Stripe-powered business, ClawPay lets your AI manage it:
 
 Set `STRIPE_SECRET_KEY` to enable. SSN is enough to sign up — no business entity required.
 
+> [!NOTE]
+> Stripe tools use **live mode** if you provide a live key (`sk_live_...`), test mode if test key (`sk_test_...`).
+
 ### PayPal Transfers
 
 Send money to anyone with a PayPal account:
@@ -125,6 +151,9 @@ Send money to anyone with a PayPal account:
 - **Send money**: "Send $30 to friend@email.com"
 
 Set `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` to enable.
+
+> [!NOTE]
+> PayPal defaults to **production mode**. Set `PAYPAL_ENVIRONMENT=sandbox` for testing.
 
 ---
 
@@ -136,9 +165,12 @@ ClawPay exposes nine tools over the MCP stdio protocol.
 
 Set up Lithic virtual card API for AI shopping. Reads `LITHIC_API_KEY` from the environment and saves the configuration to `~/.clawpay/config.json`. No parameters.
 
+> [!WARNING]
+> Uses **production mode** by default. Set `LITHIC_ENVIRONMENT=sandbox` for testing.
+
 ### `browse_and_buy`
 
-Launches a Playwright browser, navigates to the specified store, finds the product, and completes checkout using a Lithic single-use virtual card. Asks for confirmation before charging.
+Launches a Playwright browser, navigates to the specified store, finds the product, and completes checkout using a **Lithic production single-use virtual card**. Asks for confirmation before charging.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -147,8 +179,15 @@ Launches a Playwright browser, navigates to the specified store, finds the produ
 
 Returns a `ShoppingResult` with fields: `success`, `orderId`, `totalCents`, `productName`, `message`, `cancelled`.
 
-> [!WARNING]
-> `browse_and_buy` makes real purchases using Lithic virtual cards. Review your guardrail limits before use.
+> [!DANGER]
+> **PRODUCTION TRANSACTIONS**: This tool makes **REAL PURCHASES** using **REAL MONEY** via Lithic production virtual cards.
+> 
+> - Uses `LITHIC_API_KEY` in **production mode** by default
+> - Charges **real funds** from your Lithic account
+> - Requires **explicit user confirmation** before every purchase
+> - Transactions are **irreversible** once completed
+> 
+> Review your guardrail limits before use. For testing, set `LITHIC_ENVIRONMENT=sandbox`.
 
 ### `setup_payment`
 
@@ -196,6 +235,9 @@ Returns a `RefundResult` with fields: `success`, `refundId`, `amount`, `status`,
 
 Links your PayPal account by saving Client ID and Client Secret to `~/.clawpay/config.json`. Set `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` environment variables, or ClawPay will read them from the config file. No parameters.
 
+> [!NOTE]
+> Uses **production mode** by default. Set `PAYPAL_ENVIRONMENT=sandbox` for testing.
+
 ### `send_paypal`
 
 Sends money via PayPal Payouts to an email address or phone number.
@@ -227,15 +269,20 @@ If auto-detection doesn't find your client, add ClawPay manually.
       "type": "local",
       "command": ["clawpay"],
       "environment": {
-        "LITHIC_API_KEY": "your_lithic_api_key",
-        "STRIPE_SECRET_KEY": "sk_test_...",
+        "LITHIC_API_KEY": "your_production_lithic_api_key",
+        "LITHIC_ENVIRONMENT": "production",
+        "STRIPE_SECRET_KEY": "sk_live_...",
         "PAYPAL_CLIENT_ID": "your-paypal-client-id",
-        "PAYPAL_CLIENT_SECRET": "your-paypal-client-secret"
+        "PAYPAL_CLIENT_SECRET": "your-paypal-client-secret",
+        "PAYPAL_ENVIRONMENT": "production"
       }
     }
   }
 }
 ```
+
+> [!NOTE]
+> For testing, use `LITHIC_ENVIRONMENT=sandbox` and `PAYPAL_ENVIRONMENT=sandbox` with sandbox API keys.
 
 ### Claude Desktop (`claude_desktop_config.json`)
 
@@ -246,10 +293,12 @@ If auto-detection doesn't find your client, add ClawPay manually.
       "command": "clawpay",
       "args": [],
       "env": {
-        "LITHIC_API_KEY": "your_lithic_api_key",
-        "STRIPE_SECRET_KEY": "sk_test_...",
+        "LITHIC_API_KEY": "your_production_lithic_api_key",
+        "LITHIC_ENVIRONMENT": "production",
+        "STRIPE_SECRET_KEY": "sk_live_...",
         "PAYPAL_CLIENT_ID": "your-paypal-client-id",
-        "PAYPAL_CLIENT_SECRET": "your-paypal-client-secret"
+        "PAYPAL_CLIENT_SECRET": "your-paypal-client-secret",
+        "PAYPAL_ENVIRONMENT": "production"
       }
     }
   }
@@ -266,14 +315,19 @@ Run in your terminal:
 
 ```bash
 claude mcp add -s user clawpay \
-  -e LITHIC_API_KEY=your_lithic_api_key \
-  -e STRIPE_SECRET_KEY=sk_test_... \
+  -e LITHIC_API_KEY=your_production_lithic_api_key \
+  -e LITHIC_ENVIRONMENT=production \
+  -e STRIPE_SECRET_KEY=sk_live_... \
   -e PAYPAL_CLIENT_ID=your-paypal-client-id \
   -e PAYPAL_CLIENT_SECRET=your-paypal-client-secret \
+  -e PAYPAL_ENVIRONMENT=production \
   -- clawpay
 ```
 
 This registers ClawPay globally across all Claude Code projects. Stripe and PayPal credentials are optional.
+
+> [!CAUTION]
+> **Production Keys**: Use production API keys for live transactions. For testing, use sandbox keys with `LITHIC_ENVIRONMENT=sandbox` and `PAYPAL_ENVIRONMENT=sandbox`.
 
 ### OpenClaw
 
@@ -292,15 +346,17 @@ clawdhub install clawpay
 OpenClaw uses ClawPay through the mcporter bridge. Set your credentials as environment variables:
 
 ```bash
-export LITHIC_API_KEY=your_lithic_api_key
-export STRIPE_SECRET_KEY=sk_test_...              # optional
+export LITHIC_API_KEY=your_production_lithic_api_key
+export LITHIC_ENVIRONMENT=production              # production (default) or sandbox
+export STRIPE_SECRET_KEY=sk_live_...              # optional
 export PAYPAL_CLIENT_ID=your-paypal-client-id      # optional
 export PAYPAL_CLIENT_SECRET=your-paypal-client-secret  # optional
+export PAYPAL_ENVIRONMENT=production              # optional
 ```
 
 Then ask OpenClaw: **"Buy me a blue t-shirt on automationexercise.com"** to get started.
 
-Replace `your_lithic_api_key` with your actual Lithic API key. Stripe and PayPal credentials are optional — only needed for merchant tools and PayPal transfers.
+Replace API keys with your actual production keys. Stripe and PayPal credentials are optional — only needed for merchant tools and PayPal transfers.
 
 ---
 
@@ -331,7 +387,32 @@ Each entry contains: `timestamp` (ISO 8601), `action`, `amount`, `currency`, `st
 
 **Automated Security.** The CI pipeline runs a hardcoded-key scan on every push. Dependabot sends weekly dependency update PRs. GitHub secret scanning is enabled on the repository.
 
+> [!WARNING]
+> **Production Mode Security**
+> - **NEVER commit API keys** to version control
+> - Use **environment variables** for all credentials
+> - **Rotate keys immediately** if exposed
+> - **Monitor audit logs** for unexpected activity
+> - **Set conservative guardrail limits** until confident in automation
+
 For vulnerability reports, see [SECURITY.md](SECURITY.md). For full legal terms, see [DISCLAIMER.md](DISCLAIMER.md).
+
+---
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `LITHIC_API_KEY` | Yes (for shopping) | — | Lithic API key (production or sandbox) |
+| `LITHIC_ENVIRONMENT` | No | `production` | `production` or `sandbox` |
+| `STRIPE_SECRET_KEY` | No | — | Stripe secret key (sk_live_ or sk_test_) |
+| `PAYPAL_CLIENT_ID` | No | — | PayPal client ID |
+| `PAYPAL_CLIENT_SECRET` | No | — | PayPal client secret |
+| `PAYPAL_ENVIRONMENT` | No | `production` | `production` or `sandbox` |
+
+> [!IMPORTANT]
+> **Production is Default**: ClawPay defaults to production mode for all services (Lithic, PayPal).
+> Explicitly set `*_ENVIRONMENT=sandbox` for testing.
 
 ---
 
